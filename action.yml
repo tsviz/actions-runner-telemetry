@@ -20,8 +20,11 @@ inputs:
     default: ""
 outputs:
   report-path:
-    description: "Path to the generated telemetry report"
+    description: "Path to the generated markdown telemetry report"
     value: ${{ steps.main.outputs.report-path }}
+  dashboard-path:
+    description: "Path to the interactive HTML dashboard"
+    value: ${{ steps.main.outputs.dashboard-path }}
   data-path:
     description: "Path to the raw telemetry data JSON"
     value: ${{ steps.main.outputs.data-path }}
@@ -106,7 +109,8 @@ runs:
             python3 "${TELEMETRY_ACTION_PATH}/generate_report.py"
             
             # Set outputs
-            echo "report-path=${GITHUB_WORKSPACE}/telemetry-report.html" >> $GITHUB_OUTPUT
+            echo "report-path=${GITHUB_WORKSPACE}/telemetry-report.md" >> $GITHUB_OUTPUT
+            echo "dashboard-path=${GITHUB_WORKSPACE}/telemetry-dashboard.html" >> $GITHUB_OUTPUT
             echo "data-path=${GITHUB_WORKSPACE}/telemetry-raw.json" >> $GITHUB_OUTPUT
             echo "csv-path=${GITHUB_WORKSPACE}/telemetry-samples.csv" >> $GITHUB_OUTPUT
             echo "summary-path=${GITHUB_WORKSPACE}/telemetry-summary.json" >> $GITHUB_OUTPUT

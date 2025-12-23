@@ -1,13 +1,14 @@
 name: Example CI with Telemetry
 
-# This is an example workflow showing how to integrate runner-telemetry
-# into your CI/CD pipeline. Copy and adapt this to your needs.
+# This workflow demonstrates the telemetry action using simulated workloads.
+# Copy this pattern and replace the simulation steps with your actual build commands.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:  # Allow manual triggers for testing
 
 env:
   # Set to 'false' to disable telemetry without modifying the workflow
@@ -15,7 +16,7 @@ env:
 
 jobs:
   build:
-    name: Build & Test
+    name: Build & Test (Demo)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,18 +30,47 @@ jobs:
         with:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
-      # Your normal workflow steps
-      - name: Install Dependencies
-        run: npm ci
+      # Simulated workload steps (replace with your actual build commands)
+      - name: Simulate Install Dependencies
+        run: |
+          echo "📦 Simulating dependency installation..."
+          # Create some CPU load
+          for i in {1..3}; do
+            echo "Installing package $i..."
+            dd if=/dev/urandom bs=1M count=10 2>/dev/null | gzip > /dev/null
+            sleep 1
+          done
+          echo "✅ Dependencies installed"
 
-      - name: Build
-        run: npm run build
+      - name: Simulate Build
+        run: |
+          echo "🔨 Simulating build process..."
+          # Create CPU + memory load
+          python3 -c "
+          import time
+          data = []
+          for i in range(5):
+              data.append('x' * (1024 * 1024 * 10))  # 10MB chunks
+              print(f'Building module {i+1}/5...')
+              time.sleep(1)
+          print('✅ Build complete')
+          "
 
-      - name: Test
-        run: npm test
+      - name: Simulate Tests
+        run: |
+          echo "🧪 Running tests..."
+          # Parallel test simulation
+          for i in {1..4}; do
+            (dd if=/dev/urandom bs=512K count=5 2>/dev/null | gzip > /dev/null; echo "Test suite $i passed ✓") &
+          done
+          wait
+          echo "✅ All tests passed"
 
-      - name: Lint
-        run: npm run lint
+      - name: Simulate Lint
+        run: |
+          echo "🔍 Linting code..."
+          sleep 2
+          echo "✅ No linting issues found"
 
       # ╔═══════════════════════════════════════════════════════════════╗
       # ║  STOP TELEMETRY - Use if: always() to run even if steps fail  ║
@@ -59,10 +89,10 @@ jobs:
         with:
           name: telemetry-${{ github.run_id }}
           path: |
-            telemetry-report.html
+            telemetry-report.md
+            telemetry-dashboard.html
             telemetry-raw.json
             telemetry-samples.csv
-            telemetry-steps.csv
             telemetry-summary.json
           retention-days: 14
           if-no-files-found: ignore
@@ -95,7 +125,12 @@ jobs:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Install Dependencies
-        run: npm ci
+        run: |
+          echo "📦 Installing dependencies..."
+          for i in {1..3}; do
+            dd if=/dev/urandom bs=1M count=5 2>/dev/null | gzip > /dev/null
+            sleep 1
+          done
 
       - name: '[Telemetry] Build'
         uses: tsviz/actions-runner-telemetry@v1
@@ -105,7 +140,15 @@ jobs:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Build
-        run: npm run build
+        run: |
+          echo "🔨 Building..."
+          python3 -c "
+          import time
+          for i in range(3):
+              data = 'x' * (1024 * 1024 * 20)
+              print(f'Compiling module {i+1}...')
+              time.sleep(1)
+          "
 
       - name: '[Telemetry] Test'
         uses: tsviz/actions-runner-telemetry@v1
@@ -115,7 +158,12 @@ jobs:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Test
-        run: npm test
+        run: |
+          echo "🧪 Testing..."
+          for i in {1..3}; do
+            echo "Running test suite $i..."
+            sleep 1
+          done
 
       # Stop and generate report
       - name: Stop Telemetry
@@ -130,7 +178,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: telemetry-detailed-${{ github.run_id }}
-          path: telemetry-*.html
+          path: |
+            telemetry-report.md
+            telemetry-dashboard.html
           retention-days: 14
           if-no-files-found: ignore
 
@@ -144,8 +194,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Quick Build
-        run: npm ci && npm run build
+      - name: Run Some Work
+        run: |
+          echo "Running quick workload..."
+          dd if=/dev/urandom bs=1M count=20 2>/dev/null | gzip > /dev/null
+          sleep 2
 
       # Take a snapshot at this point in time
       - name: Resource Snapshot
@@ -158,5 +211,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: resource-snapshot
-          path: telemetry-report.html
+          path: telemetry-report.md
           if-no-files-found: ignore

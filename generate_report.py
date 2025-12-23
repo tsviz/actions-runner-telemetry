@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Generate visual telemetry report for GitHub Step Summary.
-Uses GitHub-compatible visualizations (tables, progress bars, Unicode charts).
+Uses Mermaid diagrams (natively supported by GitHub) and modern markdown styling.
+Also generates an interactive HTML dashboard artifact.
 """
 
 import os
@@ -55,60 +56,65 @@ def format_duration(seconds):
     else:
         return f"{seconds/3600:.1f}h"
 
-def create_sparkline(values, width=20):
-    """Create a Unicode sparkline chart."""
-    if not values:
-        return "▁" * width
-    
-    # Normalize values to 0-8 range for Unicode block characters
-    min_val = min(values)
-    max_val = max(values)
-    if max_val == min_val:
-        return "▄" * min(len(values), width)  # Flat line at middle
-    
-    # Sample values if more than width
-    if len(values) > width:
-        step = len(values) / width
-        sampled = [values[int(i * step)] for i in range(width)]
-    else:
-        sampled = values
-    
-    # Unicode block characters for sparkline (▁▂▃▄▅▆▇█)
-    blocks = "▁▂▃▄▅▆▇█"
-    
-    result = ""
-    for v in sampled:
-        normalized = (v - min_val) / (max_val - min_val)
-        idx = min(int(normalized * 7), 7)
-        result += blocks[idx]
-    
-    return result
+def create_mermaid_pie_chart(title, data):
+    """Create a Mermaid pie chart."""
+    chart = f'```mermaid\npie showData title {title}\n'
+    for label, value in data.items():
+        if value > 0:
+            chart += f'    "{label}" : {value:.1f}\n'
+    chart += '```\n'
+    return chart
 
-def create_progress_bar(value, max_val=100, width=20, show_percent=True):
-    """Create a text-based progress bar."""
-    percent = min(value / max_val, 1.0) if max_val > 0 else 0
-    filled = int(percent * width)
-    empty = width - filled
+def create_mermaid_xy_chart(title, x_labels, datasets, y_title="Value"):
+    """Create a Mermaid XY chart (bar or line)."""
+    # Mermaid xychart-beta for time series
+    chart = f'```mermaid\nxychart-beta\n    title "{title}"\n'
+    chart += f'    x-axis [{", ".join(x_labels)}]\n'
+    chart += f'    y-axis "{y_title}"\n'
     
-    # Color indicator
-    if percent >= 0.85:
-        indicator = "🔴"
-    elif percent >= 0.60:
-        indicator = "🟡"
-    else:
-        indicator = "🟢"
+    for name, values in datasets.items():
+        values_str = ", ".join([f"{v:.1f}" for v in values])
+        chart += f'    line [{values_str}]\n'
     
-    bar = "█" * filled + "░" * empty
-    
-    if show_percent:
-        return f"{indicator} `{bar}` {value:.1f}%"
-    return f"{indicator} `{bar}`"
+    chart += '```\n'
+    return chart
 
-def create_horizontal_bar(value, max_val, color_emoji="🔵"):
-    """Create a simple horizontal bar using markdown."""
-    percent = min(value / max_val, 1.0) if max_val > 0 else 0
-    filled = int(percent * 15)
-    return f"`{'█' * filled}{'░' * (15 - filled)}` {value:.1f}"
+def create_mermaid_gantt(title, steps, duration):
+    """Create a Mermaid Gantt chart for step timeline."""
+    if not steps:
+        return ""
+    
+    chart = f'```mermaid\ngantt\n    title {title}\n    dateFormat s\n    axisFormat %S\n\n'
+    
+    for step in steps:
+        name = step['name'][:25].replace('"', "'")
+        start = int(step.get('start_offset', 0))
+        dur = max(1, int(step['duration']))
+        chart += f'    {name} : {start}, {dur}s\n'
+    
+    chart += '```\n'
+    return chart
+
+def create_resource_bar(value, max_val=100, label=""):
+    """Create a visual resource bar using HTML that GitHub supports."""
+    percent = min(value / max_val * 100, 100) if max_val > 0 else 0
+    
+    # Determine color based on thresholds
+    if percent >= 85:
+        color = "#ef4444"  # red
+        status = "🔴"
+    elif percent >= 60:
+        color = "#f59e0b"  # yellow
+        status = "🟡"
+    else:
+        color = "#22c55e"  # green
+        status = "🟢"
+    
+    # Create bar using unicode blocks with color indicator
+    filled = int(percent / 5)  # 20 blocks total
+    bar = "█" * filled + "░" * (20 - filled)
+    
+    return f"{status} `{bar}` **{value:.1f}%**"
 
 def analyze_steps(data):
     """Analyze step-level metrics."""
@@ -136,24 +142,22 @@ def analyze_steps(data):
             
             analyzed_step = {
                 'name': step['name'],
+                'start_offset': step_start - start_time,
                 'duration': step_end - step_start,
                 'sample_count': len(step_samples),
                 'avg_cpu': sum(cpu_values) / len(cpu_values),
                 'max_cpu': max(cpu_values),
                 'avg_mem': sum(mem_values) / len(mem_values),
                 'max_mem': max(mem_values),
-                'cpu_values': cpu_values,
-                'mem_values': mem_values,
             }
         else:
             analyzed_step = {
                 'name': step['name'],
+                'start_offset': step_start - start_time,
                 'duration': step_end - step_start,
                 'sample_count': 0,
                 'avg_cpu': 0, 'max_cpu': 0,
                 'avg_mem': 0, 'max_mem': 0,
-                'cpu_values': [],
-                'mem_values': [],
             }
         
         analyzed_steps.append(analyzed_step)
@@ -161,7 +165,7 @@ def analyze_steps(data):
     return analyzed_steps
 
 def generate_steps_section(data):
-    """Generate the per-step analysis section."""
+    """Generate the per-step analysis section with Mermaid charts."""
     analyzed_steps = analyze_steps(data)
     
     if not analyzed_steps:
@@ -173,36 +177,48 @@ def generate_steps_section(data):
     heaviest_mem = max(analyzed_steps, key=lambda s: s['avg_mem'])
     longest_step = max(analyzed_steps, key=lambda s: s['duration'])
     
+    # Create Gantt timeline
+    gantt = create_mermaid_gantt("Step Timeline", analyzed_steps, duration)
+    
+    # Create pie chart for CPU distribution
+    cpu_data = {s['name'][:15]: s['avg_cpu'] * s['duration'] for s in analyzed_steps if s['avg_cpu'] > 0}
+    cpu_pie = create_mermaid_pie_chart("CPU Time Distribution", cpu_data) if cpu_data else ""
+    
     section = f'''
 ---
 
 ## 📋 Per-Step Analysis
 
-| Step | Duration | Avg CPU | Max CPU | Avg Mem | Trend |
-|:-----|:--------:|:-------:|:-------:|:-------:|:-----:|
+### ⏱️ Timeline
+
+{gantt}
+
+### 📊 CPU Distribution
+
+{cpu_pie}
+
+### 📈 Step Metrics
+
+| Step | Duration | Avg CPU | Peak CPU | Avg Mem | Peak Mem |
+|:-----|:--------:|:-------:|:--------:|:-------:|:--------:|
 '''
     
     for step in analyzed_steps:
-        cpu_trend = create_sparkline(step['cpu_values'], 10)
         is_heavy = step == heaviest_cpu
-        badge = "🔥" if is_heavy else ""
-        section += f"| {badge} {step['name'][:25]} | {format_duration(step['duration'])} | {step['avg_cpu']:.1f}% | {step['max_cpu']:.1f}% | {step['avg_mem']:.1f}% | `{cpu_trend}` |\n"
+        badge = "🔥 " if is_heavy else ""
+        section += f"| {badge}{step['name'][:25]} | {format_duration(step['duration'])} | {step['avg_cpu']:.1f}% | {step['max_cpu']:.1f}% | {step['avg_mem']:.1f}% | {step['max_mem']:.1f}% |\n"
     
-    # Insights
     section += f'''
 
-### 💡 Insights
-
-- **Longest Step:** {longest_step['name'][:30]} ({format_duration(longest_step['duration'])})
-- **Heaviest CPU:** {heaviest_cpu['name'][:30]} ({heaviest_cpu['avg_cpu']:.1f}% avg)
-- **Heaviest Memory:** {heaviest_mem['name'][:30]} ({heaviest_mem['avg_mem']:.1f}% avg)
+> 💡 **Insights:** Longest step: **{longest_step['name'][:25]}** ({format_duration(longest_step['duration'])}) • 
+> Heaviest CPU: **{heaviest_cpu['name'][:25]}** ({heaviest_cpu['avg_cpu']:.1f}%)
 
 '''
     
     return section
 
 def generate_report(data):
-    """Generate the full visual report."""
+    """Generate the full visual report with Mermaid diagrams."""
     samples = data.get('samples', [])
     
     if not samples:
@@ -260,18 +276,47 @@ def generate_report(data):
     status_priority = {'good': 0, 'warning': 1, 'critical': 2}
     overall = max(all_statuses, key=lambda s: status_priority[s])
     overall_icon = {'critical': '🔴', 'warning': '🟡', 'good': '🟢'}[overall]
-    overall_text = {'critical': 'Critical', 'warning': 'Warning', 'good': 'Healthy'}[overall]
+    overall_text = {'critical': 'Needs Attention', 'warning': 'Warning', 'good': 'Healthy'}[overall]
     
-    # Create sparklines for trends
-    cpu_sparkline = create_sparkline(cpu_values)
-    mem_sparkline = create_sparkline(mem_values)
-    load_sparkline = create_sparkline(load_1m)
+    # Create resource bars
+    cpu_bar = create_resource_bar(cpu_values[-1] if cpu_values else 0)
+    mem_bar = create_resource_bar(mem_values[-1] if mem_values else 0)
     
-    # Create progress bars for current state
-    final_cpu = cpu_values[-1] if cpu_values else 0
-    final_mem = mem_values[-1] if mem_values else 0
-    cpu_bar = create_progress_bar(final_cpu)
-    mem_bar = create_progress_bar(final_mem)
+    # Create Mermaid pie charts for resource usage
+    resource_pie = create_mermaid_pie_chart("Resource Utilization", {
+        "CPU Used": avg_cpu,
+        "CPU Idle": 100 - avg_cpu,
+    })
+    
+    memory_pie = create_mermaid_pie_chart("Memory Utilization", {
+        "Used": avg_mem,
+        "Available": 100 - avg_mem,
+    })
+    
+    # Create time series chart (sample every Nth point to keep chart readable)
+    sample_count = len(samples)
+    step_size = max(1, sample_count // 12)  # Max 12 data points for readability
+    sampled_indices = range(0, sample_count, step_size)
+    
+    x_labels = [f'"{i*data.get("interval", 2)}s"' for i in sampled_indices]
+    sampled_cpu = [cpu_values[i] for i in sampled_indices]
+    sampled_mem = [mem_values[i] for i in sampled_indices]
+    
+    # Mermaid XY chart for CPU/Memory over time
+    xy_chart = ""
+    if len(x_labels) >= 2:
+        xy_chart = f'''```mermaid
+xychart-beta
+    title "Resource Usage Over Time"
+    x-axis [{", ".join(x_labels)}]
+    y-axis "Percent" 0 --> 100
+    line [{", ".join([f"{v:.1f}" for v in sampled_cpu])}]
+    line [{", ".join([f"{v:.1f}" for v in sampled_mem])}]
+```
+
+> 📊 **Legend:** Line 1 = CPU %, Line 2 = Memory %
+
+'''
     
     # Get context info
     ctx = data.get('github_context', {})
@@ -281,28 +326,52 @@ def generate_report(data):
     # Build report
     report = f'''# 🖥️ Runner Telemetry Dashboard
 
-## 📊 Executive Summary
-
-| Metric | Status | Peak | Avg | Trend |
-|:-------|:------:|:----:|:---:|:-----:|
-| **Overall Health** | {overall_icon} {overall_text} | - | - | - |
-| **CPU Usage** | {cpu_icon} | {max_cpu:.1f}% | {avg_cpu:.1f}% | `{cpu_sparkline}` |
-| **Memory Usage** | {mem_icon} | {max_mem:.1f}% | {avg_mem:.1f}% | `{mem_sparkline}` |
-| **System Load** | {load_icon} | {max_load:.2f} | {avg_load:.2f} | `{load_sparkline}` |
-| **I/O Wait** | {iowait_icon} | {max_iowait:.1f}% | {avg_iowait:.1f}% | - |
-| **CPU Steal** | {steal_icon} | {max_steal:.1f}% | {avg_steal:.1f}% | - |
-| **Swap Usage** | {swap_icon} | {max_swap:.1f}% | {avg_swap:.1f}% | - |
-
-**Duration:** {format_duration(duration)} • **Samples:** {len(samples)} • **Interval:** {data.get('interval', 2)}s
+> **{overall_icon} Status: {overall_text}** • Duration: {format_duration(duration)} • Samples: {len(samples)}
 
 ---
 
-## 📈 Current Resource Usage
+## 📊 Quick Overview
 
-| Resource | Status Bar | Value |
-|:---------|:-----------|------:|
-| **CPU** | {cpu_bar} | |
-| **Memory** | {mem_bar} | |
+| | Current | Peak | Average |
+|:--|:-------:|:----:|:-------:|
+| **CPU** {cpu_icon} | {cpu_bar} | {max_cpu:.1f}% | {avg_cpu:.1f}% |
+| **Memory** {mem_icon} | {mem_bar} | {max_mem:.1f}% | {avg_mem:.1f}% |
+| **Load** {load_icon} | {load_1m[-1]:.2f} | {max_load:.2f} | {avg_load:.2f} |
+
+---
+
+## 📈 Resource Usage Over Time
+
+{xy_chart}
+
+---
+
+## 🔄 Resource Distribution
+
+<table>
+<tr>
+<td width="50%">
+
+{resource_pie}
+
+</td>
+<td width="50%">
+
+{memory_pie}
+
+</td>
+</tr>
+</table>
+
+---
+
+## ⚡ Performance Metrics
+
+| Metric | Status | Peak | Average |
+|:-------|:------:|:----:|:-------:|
+| **I/O Wait** | {iowait_icon} | {max_iowait:.1f}% | {avg_iowait:.1f}% |
+| **CPU Steal** | {steal_icon} | {max_steal:.1f}% | {avg_steal:.1f}% |
+| **Swap Usage** | {swap_icon} | {max_swap:.1f}% | {avg_swap:.1f}% |
 
 ---
 
@@ -310,10 +379,10 @@ def generate_report(data):
 
 | Metric | Total | Avg Rate |
 |:-------|------:|---------:|
-| **Disk Read** | {format_bytes(total_disk_read * 1024 * 1024)} | {format_bytes(sum(disk_read) / len(disk_read) * 1024 * 1024)}/s |
-| **Disk Write** | {format_bytes(total_disk_write * 1024 * 1024)} | {format_bytes(sum(disk_write) / len(disk_write) * 1024 * 1024)}/s |
-| **Network RX** | {format_bytes(total_net_rx * 1024 * 1024)} | {format_bytes(sum(net_rx) / len(net_rx) * 1024 * 1024)}/s |
-| **Network TX** | {format_bytes(total_net_tx * 1024 * 1024)} | {format_bytes(sum(net_tx) / len(net_tx) * 1024 * 1024)}/s |
+| 📥 **Disk Read** | {format_bytes(total_disk_read * 1024 * 1024)} | {format_bytes(sum(disk_read) / len(disk_read) * 1024 * 1024)}/s |
+| 📤 **Disk Write** | {format_bytes(total_disk_write * 1024 * 1024)} | {format_bytes(sum(disk_write) / len(disk_write) * 1024 * 1024)}/s |
+| 🌐 **Network RX** | {format_bytes(total_net_rx * 1024 * 1024)} | {format_bytes(sum(net_rx) / len(net_rx) * 1024 * 1024)}/s |
+| 🌐 **Network TX** | {format_bytes(total_net_tx * 1024 * 1024)} | {format_bytes(sum(net_tx) / len(net_tx) * 1024 * 1024)}/s |
 
 '''
 
@@ -326,14 +395,14 @@ def generate_report(data):
     report += f'''
 ---
 
-## 🖥️ System Information
+## 🖥️ Runner Information
 
 | Component | Details |
 |:----------|:--------|
-| **Runner** | {ctx.get('runner_name', 'Unknown')} |
-| **OS** | {ctx.get('runner_os', 'Unknown')} |
-| **Architecture** | {ctx.get('runner_arch', 'Unknown')} |
-| **Total Memory** | {initial.get('memory', {}).get('total_mb', 0)} MB |
+| **Runner** | {ctx.get('runner_name', 'GitHub Hosted')} |
+| **OS** | {ctx.get('runner_os', 'Linux')} |
+| **Architecture** | {ctx.get('runner_arch', 'X64')} |
+| **Total Memory** | {initial.get('memory', {}).get('total_mb', 0):,} MB |
 | **CPU Cores** | {initial.get('cpu_count', 'N/A')} |
 
 '''
@@ -343,70 +412,307 @@ def generate_report(data):
     if top_procs.get('by_cpu'):
         report += '''
 <details>
-<summary>🔝 Top Processes by CPU</summary>
+<summary>🔝 Top Processes</summary>
 
 | Process | CPU % | Memory % |
 |:--------|------:|---------:|
 '''
         for p in top_procs.get('by_cpu', [])[:5]:
             cmd = p['command'].split('/')[-1].split()[0][:30]
-            report += f"| {cmd} | {p['cpu']:.1f}% | {p['mem']:.1f}% |\n"
-        report += '\n</details>\n'
-    
-    if top_procs.get('by_mem'):
-        report += '''
-<details>
-<summary>🔝 Top Processes by Memory</summary>
-
-| Process | Memory % | CPU % |
-|:--------|------:|---------:|
-'''
-        for p in top_procs.get('by_mem', [])[:5]:
-            cmd = p['command'].split('/')[-1].split()[0][:30]
-            report += f"| {cmd} | {p['mem']:.1f}% | {p['cpu']:.1f}% |\n"
+            report += f"| `{cmd}` | {p['cpu']:.1f}% | {p['mem']:.1f}% |\n"
         report += '\n</details>\n'
     
     # Recommendations
     recommendations = []
     if max_cpu > THRESHOLDS['cpu_critical']:
-        recommendations.append(f"⚠️ **High CPU Usage:** Peak reached {max_cpu:.1f}%. Consider optimizing intensive operations or using a larger runner.")
+        recommendations.append(f"⚠️ **High CPU Usage:** Peak reached {max_cpu:.1f}%. Consider using a larger runner or optimizing compute-heavy operations.")
     if max_mem > THRESHOLDS['mem_critical']:
         recommendations.append(f"⚠️ **High Memory Usage:** Peak reached {max_mem:.1f}%. Watch for OOM issues or consider runners with more RAM.")
     if max_iowait > THRESHOLDS['iowait_warning']:
-        recommendations.append(f"⚠️ **High I/O Wait:** Peak reached {max_iowait:.1f}%. Disk operations may be bottlenecking your workflow.")
+        recommendations.append(f"⚠️ **High I/O Wait:** Disk operations may be bottlenecking performance.")
     if max_steal > THRESHOLDS['steal_warning']:
-        recommendations.append(f"⚠️ **CPU Steal Detected:** Peak reached {max_steal:.1f}%. The runner may be oversubscribed. Consider different runner types.")
+        recommendations.append(f"⚠️ **CPU Steal Detected:** The runner may be oversubscribed.")
     
     if recommendations:
         report += '\n---\n\n## 💡 Recommendations\n\n'
         for rec in recommendations:
             report += f"- {rec}\n"
+    else:
+        report += '\n---\n\n> ✅ **All metrics within healthy thresholds**\n'
     
-    # Raw data link
-    report += f'''
+    report += '''
 ---
 
-<details>
-<summary>📊 Raw Data Summary</summary>
-
-```json
-{{
-  "duration_seconds": {duration:.1f},
-  "sample_count": {len(samples)},
-  "cpu": {{"avg": {avg_cpu:.1f}, "max": {max_cpu:.1f}}},
-  "memory": {{"avg": {avg_mem:.1f}, "max": {max_mem:.1f}}},
-  "load_1m": {{"avg": {avg_load:.2f}, "max": {max_load:.2f}}}
-}}
-```
-
-</details>
-
----
-
-*Generated by [Runner Telemetry Action](https://github.com/tsviz/actions-runner-telemetry)*
+<sub>Generated by [Runner Telemetry Action](https://github.com/tsviz/actions-runner-telemetry) • [View HTML Dashboard](./telemetry-dashboard.html)</sub>
 '''
     
     return report
+
+
+def generate_html_dashboard(data):
+    """Generate an interactive HTML dashboard with Chart.js."""
+    samples = data.get('samples', [])
+    
+    if not samples:
+        return "<html><body><h1>No data collected</h1></body></html>"
+    
+    # Extract data
+    start_time = data.get('start_time', 0)
+    timestamps = [(s['timestamp'] - start_time) for s in samples]
+    cpu_values = [s['cpu_percent'] for s in samples]
+    mem_values = [s['memory']['percent'] for s in samples]
+    load_values = [s['load']['load_1m'] for s in samples]
+    disk_read = [s['disk_io']['read_rate'] / (1024*1024) for s in samples]
+    disk_write = [s['disk_io']['write_rate'] / (1024*1024) for s in samples]
+    
+    # Calculate stats
+    avg_cpu = sum(cpu_values) / len(cpu_values)
+    max_cpu = max(cpu_values)
+    avg_mem = sum(mem_values) / len(mem_values)
+    max_mem = max(mem_values)
+    duration = data.get('duration', 0)
+    
+    ctx = data.get('github_context', {})
+    
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Runner Telemetry Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {{
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --border-color: #30363d;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 24px;
+            min-height: 100vh;
+        }}
+        .container {{ max-width: 1400px; margin: 0 auto; }}
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }}
+        .header h1 {{ font-size: 24px; font-weight: 600; }}
+        .header .meta {{ color: var(--text-secondary); font-size: 14px; }}
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }}
+        .stat-card {{
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }}
+        .stat-card .label {{ color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }}
+        .stat-card .value {{ font-size: 28px; font-weight: 600; margin-top: 4px; }}
+        .stat-card .detail {{ color: var(--text-secondary); font-size: 13px; margin-top: 4px; }}
+        .stat-card.good .value {{ color: var(--accent-green); }}
+        .stat-card.warning .value {{ color: var(--accent-yellow); }}
+        .stat-card.critical .value {{ color: var(--accent-red); }}
+        .chart-container {{
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }}
+        .chart-container h3 {{
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+        }}
+        .chart-row {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 16px;
+        }}
+        canvas {{ max-height: 300px; }}
+        .footer {{
+            margin-top: 32px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖥️ Runner Telemetry Dashboard</h1>
+            <div class="meta">
+                Duration: {format_duration(duration)} • 
+                {len(samples)} samples • 
+                {ctx.get('runner_os', 'Linux')} / {ctx.get('runner_arch', 'X64')}
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card {'critical' if max_cpu > 85 else 'warning' if max_cpu > 60 else 'good'}">
+                <div class="label">Peak CPU</div>
+                <div class="value">{max_cpu:.1f}%</div>
+                <div class="detail">Avg: {avg_cpu:.1f}%</div>
+            </div>
+            <div class="stat-card {'critical' if max_mem > 90 else 'warning' if max_mem > 70 else 'good'}">
+                <div class="label">Peak Memory</div>
+                <div class="value">{max_mem:.1f}%</div>
+                <div class="detail">Avg: {avg_mem:.1f}%</div>
+            </div>
+            <div class="stat-card good">
+                <div class="label">Duration</div>
+                <div class="value">{format_duration(duration)}</div>
+                <div class="detail">{len(samples)} samples collected</div>
+            </div>
+            <div class="stat-card good">
+                <div class="label">Max Load</div>
+                <div class="value">{max(load_values):.2f}</div>
+                <div class="detail">Avg: {sum(load_values)/len(load_values):.2f}</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h3>📈 CPU & Memory Over Time</h3>
+            <canvas id="cpuMemChart"></canvas>
+        </div>
+        
+        <div class="chart-row">
+            <div class="chart-container">
+                <h3>⚡ System Load</h3>
+                <canvas id="loadChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>💾 Disk I/O (MB/s)</h3>
+                <canvas id="diskChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Generated by <a href="https://github.com/tsviz/actions-runner-telemetry" style="color: var(--accent-blue);">Runner Telemetry Action</a>
+        </div>
+    </div>
+    
+    <script>
+        const timestamps = {json.dumps(timestamps)};
+        const cpuData = {json.dumps(cpu_values)};
+        const memData = {json.dumps(mem_values)};
+        const loadData = {json.dumps(load_values)};
+        const diskReadData = {json.dumps(disk_read)};
+        const diskWriteData = {json.dumps(disk_write)};
+        
+        const chartDefaults = {{
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {{
+                legend: {{ labels: {{ color: '#8b949e' }} }}
+            }},
+            scales: {{
+                x: {{ 
+                    grid: {{ color: '#21262d' }},
+                    ticks: {{ color: '#8b949e' }}
+                }},
+                y: {{ 
+                    grid: {{ color: '#21262d' }},
+                    ticks: {{ color: '#8b949e' }}
+                }}
+            }}
+        }};
+        
+        // CPU & Memory Chart
+        new Chart(document.getElementById('cpuMemChart'), {{
+            type: 'line',
+            data: {{
+                labels: timestamps.map(t => t.toFixed(0) + 's'),
+                datasets: [
+                    {{
+                        label: 'CPU %',
+                        data: cpuData,
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }},
+                    {{
+                        label: 'Memory %',
+                        data: memData,
+                        borderColor: '#a371f7',
+                        backgroundColor: 'rgba(163, 113, 247, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }}
+                ]
+            }},
+            options: {{ ...chartDefaults, scales: {{ ...chartDefaults.scales, y: {{ ...chartDefaults.scales.y, max: 100 }} }} }}
+        }});
+        
+        // Load Chart
+        new Chart(document.getElementById('loadChart'), {{
+            type: 'line',
+            data: {{
+                labels: timestamps.map(t => t.toFixed(0) + 's'),
+                datasets: [{{
+                    label: 'Load 1m',
+                    data: loadData,
+                    borderColor: '#d29922',
+                    backgroundColor: 'rgba(210, 153, 34, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }}]
+            }},
+            options: chartDefaults
+        }});
+        
+        // Disk I/O Chart
+        new Chart(document.getElementById('diskChart'), {{
+            type: 'line',
+            data: {{
+                labels: timestamps.map(t => t.toFixed(0) + 's'),
+                datasets: [
+                    {{
+                        label: 'Read MB/s',
+                        data: diskReadData,
+                        borderColor: '#3fb950',
+                        tension: 0.3
+                    }},
+                    {{
+                        label: 'Write MB/s',
+                        data: diskWriteData,
+                        borderColor: '#f85149',
+                        tension: 0.3
+                    }}
+                ]
+            }},
+            options: chartDefaults
+        }});
+    </script>
+</body>
+</html>'''
+    
+    return html
 
 
 def export_csv_files(data, output_dir):
@@ -490,6 +796,7 @@ def main():
     with open(DATA_FILE, 'r') as f:
         data = json.load(f)
     
+    # Generate markdown report for step summary
     report = generate_report(data)
     
     # Write to GITHUB_STEP_SUMMARY if available
@@ -499,18 +806,28 @@ def main():
             f.write(report)
         print("✅ Report written to GitHub Step Summary")
     
-    # Also write to local file
+    # Save markdown report
     output_dir = os.environ.get('GITHUB_WORKSPACE', '/github/workspace')
     report_path = os.path.join(output_dir, 'telemetry-report.md')
     
     try:
         with open(report_path, 'w') as f:
             f.write(report)
-        print(f"✅ Report saved to {report_path}")
+        print(f"✅ Markdown report saved to {report_path}")
     except:
         with open('telemetry-report.md', 'w') as f:
             f.write(report)
-        print("✅ Report saved to telemetry-report.md")
+    
+    # Generate and save HTML dashboard
+    html_dashboard = generate_html_dashboard(data)
+    html_path = os.path.join(output_dir, 'telemetry-dashboard.html')
+    try:
+        with open(html_path, 'w') as f:
+            f.write(html_dashboard)
+        print(f"✅ HTML dashboard saved to {html_path}")
+    except:
+        with open('telemetry-dashboard.html', 'w') as f:
+            f.write(html_dashboard)
     
     # Save raw data as JSON
     try:
