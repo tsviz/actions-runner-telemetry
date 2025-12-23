@@ -1,5 +1,5 @@
 name: "Runner Telemetry Action"
-description: "Collects detailed system and environment telemetry from the GitHub Actions runner with visual dashboards, time-series graphs, and per-step resource tracking. Just add it once - collection starts automatically and report generates at job end."
+description: "Collect system telemetry from GitHub Actions runners with visual dashboards and per-step tracking."
 author: "tsviz"
 inputs:
   enabled:
