@@ -1,11 +1,39 @@
 name: "Runner Telemetry Action"
-description: "Collects detailed system and environment telemetry from the GitHub Actions runner for workflow observability and diagnostics."
+description: "Collects detailed system and environment telemetry from the GitHub Actions runner with visual dashboards, time-series graphs, and per-step resource tracking. Just add it once - collection starts automatically and report generates at job end."
 author: "tsviz"
-inputs: {}
-outputs: {}
+inputs:
+  enabled:
+    description: "Enable or disable telemetry. Set to 'false' to skip collection without removing from workflow."
+    required: false
+    default: "true"
+  mode:
+    description: "Operation mode: 'auto' (default) starts collection automatically, 'step' marks a step boundary for per-step tracking, 'snapshot' for quick one-time capture."
+    required: false
+    default: "auto"
+  interval:
+    description: "Sampling interval in seconds for metrics collection."
+    required: false
+    default: "2"
+  step-name:
+    description: "Name of the current step (used with mode: 'step' to mark step boundaries for per-step analysis)."
+    required: false
+    default: ""
+outputs:
+  report-path:
+    description: "Path to the generated telemetry report"
+  data-path:
+    description: "Path to the raw telemetry data JSON"
+  csv-path:
+    description: "Path to the time-series CSV file"
+  summary-path:
+    description: "Path to the dashboard-ready summary JSON"
+  enabled:
+    description: "Whether telemetry was enabled for this run"
 runs:
   using: "docker"
   image: "Dockerfile"
+  post-entrypoint: ["/post-entrypoint.sh"]
+  post-if: "always()"
 branding:
   icon: "activity"
   color: "blue"

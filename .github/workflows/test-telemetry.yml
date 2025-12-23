@@ -1,0 +1,207 @@
+name: Test Telemetry Action
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      telemetry_enabled:
+        description: 'Enable telemetry collection'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  test-simple:
+    name: Test Simple Usage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Just add once - that's it!
+      - name: Enable Telemetry
+        uses: ./
+        with:
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
+
+      # Simulate some work
+      - name: Install Dependencies
+        run: |
+          echo "Simulating dependency installation..."
+          python3 -c "
+          import os, random
+          for i in range(50):
+              with open(f'/tmp/dep_{i}.txt', 'w') as f:
+                  f.write('x' * random.randint(1000, 10000))
+          "
+          sleep 3
+
+      - name: Build Application
+        run: |
+          echo "Simulating CPU-intensive build..."
+          python3 -c "
+          import math, hashlib
+          result = 0
+          for i in range(500000):
+              result += math.sin(i) * math.cos(i)
+              hashlib.sha256(str(i).encode()).hexdigest()
+          print(f'Build completed with result: {result}')
+          "
+
+      - name: Run Tests
+        run: |
+          echo "Simulating memory-intensive tests..."
+          python3 -c "
+          import random
+          data = [random.random() for _ in range(12500000)]
+          result = sum(data) / len(data)
+          print(f'Tests passed with average: {result}')
+          "
+
+      # Report generates automatically at job end!
+
+      - name: Upload Telemetry Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-simple-${{ github.run_id }}
+          path: |
+            telemetry-report.html
+            telemetry-raw.json
+            telemetry-samples.csv
+            telemetry-steps.csv
+            telemetry-summary.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  test-with-steps:
+    name: Test With Step Markers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Enable telemetry
+      - name: Enable Telemetry
+        uses: ./
+        with:
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
+
+      # Mark steps for per-step tracking
+      - name: Mark - Install
+        uses: ./
+        with:
+          mode: step
+          step-name: "Install Dependencies"
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
+
+      - name: Install Dependencies
+        run: |
+          echo "Simulating dependency installation..."
+          sleep 3
+
+      - name: Mark - Build
+        uses: ./
+        with:
+          mode: step
+          step-name: "Build Application"
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
+
+      - name: Build Application
+        run: |
+          echo "Simulating build..."
+          python3 -c "
+          import math
+          result = sum(math.sin(i) for i in range(1000000))
+          print(f'Build done: {result}')
+          "
+
+      - name: Mark - Test
+        uses: ./
+        with:
+          mode: step
+          step-name: "Run Tests"
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
+
+      - name: Run Tests
+        run: |
+          echo "Simulating tests..."
+          sleep 2
+
+      # Report auto-generates with per-step analysis!
+
+      - name: Upload Telemetry Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-steps-${{ github.run_id }}
+          path: |
+            telemetry-report.html
+            telemetry-raw.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  test-disabled:
+    name: Test Disabled Mode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Enable telemetry with enabled=false
+      - name: Enable Telemetry (Disabled)
+        id: telemetry
+        uses: ./
+        with:
+          enabled: false
+
+      - name: Verify Disabled
+        run: |
+          echo "Telemetry enabled output: ${{ steps.telemetry.outputs.enabled }}"
+          if [ "${{ steps.telemetry.outputs.enabled }}" = "false" ]; then
+            echo "✅ Telemetry correctly disabled"
+          else
+            echo "⚠️ Telemetry should be disabled"
+          fi
+
+      - name: Some Work
+        run: |
+          echo "Running some work without telemetry..."
+          sleep 2
+
+      # Post script should also be skipped when disabled
+
+      - name: Verify No Report Generated
+        run: |
+          if [ -f "telemetry-report.html" ]; then
+            echo "⚠️ Report should not exist when disabled"
+            exit 1
+          else
+            echo "✅ No report generated (as expected)"
+          fi
+
+  test-snapshot:
+    name: Test Snapshot Mode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Take Snapshot
+        uses: ./
+        with:
+          mode: snapshot
+
+      - name: Verify Snapshot Output
+        run: |
+          echo "Checking for telemetry output..."
+          if [ -f "telemetry-report.html" ]; then
+            echo "✅ Snapshot report generated"
+            ls -la telemetry-*
+          else
+            echo "⚠️ No snapshot report found"
+          fi

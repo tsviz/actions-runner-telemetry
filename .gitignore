@@ -7,4 +7,14 @@ node_modules/
 *.log
 *.tmp
 *.swp
+
+# Test output files
 runner-telemetry.txt
+/output/
+telemetry-*.html
+telemetry-*.json
+telemetry-*.csv
+
+# Local test scripts (not needed in production)
+test_local.sh
+test_simulation.sh

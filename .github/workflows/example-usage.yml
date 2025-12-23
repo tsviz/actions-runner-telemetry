@@ -1,0 +1,149 @@
+name: Example CI with Telemetry
+
+# This is an example workflow showing how to integrate runner-telemetry
+# into your CI/CD pipeline. Copy and adapt this to your needs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # Set to 'false' to disable telemetry without modifying the workflow
+  TELEMETRY_ENABLED: 'true'
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ╔═══════════════════════════════════════════════════════════════╗
+      # ║  ENABLE TELEMETRY - Just add once!                            ║
+      # ║  Report generates automatically at job end                    ║
+      # ╚═══════════════════════════════════════════════════════════════╝
+      - name: Enable Telemetry
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      # Your normal workflow steps
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      # Report auto-generates at job end - no "stop" needed!
+
+      # Upload telemetry artifacts (optional)
+      - name: Upload Telemetry Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-${{ github.run_id }}
+          path: |
+            telemetry-report.html
+            telemetry-raw.json
+            telemetry-samples.csv
+            telemetry-steps.csv
+            telemetry-summary.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ALTERNATIVE: With per-step tracking for detailed analysis
+  # ═══════════════════════════════════════════════════════════════════
+  build-with-steps:
+    name: Build & Test (With Step Tracking)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Enable telemetry
+      - name: Enable Telemetry
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      # ╔═══════════════════════════════════════════════════════════════╗
+      # ║  OPTIONAL STEP MARKERS - Track per-step resources             ║
+      # ╚═══════════════════════════════════════════════════════════════╝
+
+      - name: '[Telemetry] Install Dependencies'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Install Dependencies"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: '[Telemetry] Build'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Build"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      - name: Build
+        run: npm run build
+
+      - name: '[Telemetry] Test'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Test"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      - name: Test
+        run: npm test
+
+      # Report with per-step breakdown auto-generates at job end!
+
+      - name: Upload Telemetry Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-detailed-${{ github.run_id }}
+          path: telemetry-*.html
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ═══════════════════════════════════════════════════════════════════
+  # QUICK CHECK: Snapshot mode for one-time capture
+  # ═══════════════════════════════════════════════════════════════════
+  quick-check:
+    name: Quick Resource Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Quick Build
+        run: npm ci && npm run build
+
+      # Take a snapshot at this point in time
+      - name: Resource Snapshot
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: snapshot
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
+      - name: Upload Snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-snapshot
+          path: telemetry-report.html
+          if-no-files-found: ignore
