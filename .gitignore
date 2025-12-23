@@ -1,0 +1,10 @@
+# Ignore Python cache, node_modules, and Docker artifacts
+__pycache__/
+node_modules/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.swp
+runner-telemetry.txt

@@ -1,0 +1,11 @@
+name: "Runner Telemetry Action"
+description: "Collects detailed system and environment telemetry from the GitHub Actions runner for workflow observability and diagnostics."
+author: "tsviz"
+inputs: {}
+outputs: {}
+runs:
+  using: "docker"
+  image: "Dockerfile"
+branding:
+  icon: "activity"
+  color: "blue"
