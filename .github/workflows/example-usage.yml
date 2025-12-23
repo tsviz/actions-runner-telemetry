@@ -22,10 +22,9 @@ jobs:
         uses: actions/checkout@v4
 
       # ╔═══════════════════════════════════════════════════════════════╗
-      # ║  ENABLE TELEMETRY - Just add once!                            ║
-      # ║  Report generates automatically at job end                    ║
+      # ║  START TELEMETRY                                               ║
       # ╚═══════════════════════════════════════════════════════════════╝
-      - name: Enable Telemetry
+      - name: Start Telemetry
         uses: tsviz/actions-runner-telemetry@v1
         with:
           enabled: ${{ env.TELEMETRY_ENABLED }}
@@ -43,7 +42,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # Report auto-generates at job end - no "stop" needed!
+      # ╔═══════════════════════════════════════════════════════════════╗
+      # ║  STOP TELEMETRY - Use if: always() to run even if steps fail  ║
+      # ╚═══════════════════════════════════════════════════════════════╝
+      - name: Stop Telemetry
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Upload telemetry artifacts (optional)
       - name: Upload Telemetry Report
@@ -70,8 +77,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Enable telemetry
-      - name: Enable Telemetry
+      # Start telemetry
+      - name: Start Telemetry
         uses: tsviz/actions-runner-telemetry@v1
         with:
           enabled: ${{ env.TELEMETRY_ENABLED }}
@@ -110,7 +117,13 @@ jobs:
       - name: Test
         run: npm test
 
-      # Report with per-step breakdown auto-generates at job end!
+      # Stop and generate report
+      - name: Stop Telemetry
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Upload Telemetry Report
         if: always()

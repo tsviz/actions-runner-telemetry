@@ -17,15 +17,15 @@ on:
           - 'false'
 
 jobs:
-  test-simple:
-    name: Test Simple Usage
+  test-basic:
+    name: Test Basic Usage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Just add once - that's it!
-      - name: Enable Telemetry
+      # Start telemetry
+      - name: Start Telemetry
         uses: ./
         with:
           enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
@@ -64,12 +64,19 @@ jobs:
           print(f'Tests passed with average: {result}')
           "
 
-      # Report generates automatically at job end!
+      # Stop and generate report
+      - name: Stop Telemetry
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
 
       - name: Upload Telemetry Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: telemetry-simple-${{ github.run_id }}
+          name: telemetry-basic-${{ github.run_id }}
           path: |
             telemetry-report.html
             telemetry-raw.json
@@ -86,8 +93,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Enable telemetry
-      - name: Enable Telemetry
+      # Start telemetry
+      - name: Start Telemetry
         uses: ./
         with:
           enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
@@ -133,9 +140,16 @@ jobs:
           echo "Simulating tests..."
           sleep 2
 
-      # Report auto-generates with per-step analysis!
+      # Stop and generate report
+      - name: Stop Telemetry
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: ${{ github.event.inputs.telemetry_enabled || 'true' }}
 
       - name: Upload Telemetry Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: telemetry-steps-${{ github.run_id }}
@@ -152,8 +166,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Enable telemetry with enabled=false
-      - name: Enable Telemetry (Disabled)
+      # Start telemetry with enabled=false
+      - name: Start Telemetry (Disabled)
         id: telemetry
         uses: ./
         with:
@@ -173,7 +187,12 @@ jobs:
           echo "Running some work without telemetry..."
           sleep 2
 
-      # Post script should also be skipped when disabled
+      - name: Stop Telemetry (Disabled)
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: false
 
       - name: Verify No Report Generated
         run: |

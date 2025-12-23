@@ -27,16 +27,17 @@ The action generates a comprehensive visual dashboard in your workflow's **Summa
 
 ## 🚀 Usage
 
-### Simple (Recommended) ✨
+### Basic Usage
 
-Just add the action once - telemetry starts automatically and the report generates at job completion:
+Start telemetry at the beginning, stop at the end to generate the report:
 
 ```yaml
 steps:
   - uses: actions/checkout@v4
   
-  - name: Enable Telemetry
-    uses: tsviz/actions-runner-telemetry@main
+  # Start monitoring
+  - name: Start Telemetry
+    uses: tsviz/actions-runner-telemetry@v1
   
   # Your build steps - telemetry runs in background
   - name: Build
@@ -45,7 +46,12 @@ steps:
   - name: Test
     run: npm test
   
-  # Report auto-generates at job end - no "stop" needed!
+  # Stop and generate report (use if: always() to run even if steps fail)
+  - name: Stop Telemetry
+    if: always()
+    uses: tsviz/actions-runner-telemetry@v1
+    with:
+      mode: stop
 ```
 
 ### With Per-Step Tracking 📊
@@ -56,13 +62,13 @@ Add optional step markers to track resource usage for each phase:
 steps:
   - uses: actions/checkout@v4
   
-  # Start telemetry (auto mode is default)
-  - name: Enable Telemetry
-    uses: tsviz/actions-runner-telemetry@main
+  # Start telemetry
+  - name: Start Telemetry
+    uses: tsviz/actions-runner-telemetry@v1
   
   # Mark each step for tracking
   - name: Mark - Install
-    uses: tsviz/actions-runner-telemetry@main
+    uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
       step-name: "Install Dependencies"
@@ -71,7 +77,7 @@ steps:
     run: npm ci
   
   - name: Mark - Build
-    uses: tsviz/actions-runner-telemetry@main
+    uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
       step-name: "Build Application"
@@ -80,7 +86,7 @@ steps:
     run: npm run build
   
   - name: Mark - Test
-    uses: tsviz/actions-runner-telemetry@main
+    uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
       step-name: "Run Tests"
@@ -88,7 +94,12 @@ steps:
   - name: Test
     run: npm test
   
-  # Report auto-generates with per-step analysis!
+  # Stop and generate report with per-step analysis
+  - name: Stop Telemetry
+    if: always()
+    uses: tsviz/actions-runner-telemetry@v1
+    with:
+      mode: stop
 ```
 
 The report will include:
@@ -101,13 +112,15 @@ The report will include:
 
 ```yaml
   - name: Upload telemetry
+    if: always()
     uses: actions/upload-artifact@v4
     with:
       name: runner-telemetry
       path: |
-        telemetry-report.md
-        telemetry-data.json
-        runner-telemetry.txt
+        telemetry-report.html
+        telemetry-raw.json
+        telemetry-samples.csv
+        telemetry-summary.json
 ```
 
 ## ⚙️ Inputs
@@ -115,7 +128,7 @@ The report will include:
 | Input | Description | Default |
 |-------|-------------|---------|
 | `enabled` | Enable or disable telemetry collection | `true` |
-| `mode` | Operation mode: `auto`, `step`, or `snapshot` | `auto` |
+| `mode` | Operation mode: `start`, `stop`, `step`, or `snapshot` | `start` |
 | `interval` | Sampling interval in seconds | `2` |
 | `step-name` | Name of the current step (used with `mode: step`) | `""` |
 
@@ -123,9 +136,10 @@ The report will include:
 
 | Mode | Description |
 |------|-------------|
-| `auto` | **(Default)** Start collection automatically, report generates at job end |
+| `start` | **(Default)** Begin background monitoring |
+| `stop` | Stop monitoring and generate report (use with `if: always()`) |
 | `step` | Mark a step boundary for per-step resource tracking |
-| `snapshot` | Quick 10-second sample with instant report (legacy) |
+| `snapshot` | Quick 10-second sample with instant report |
 
 ### Disabling Telemetry
 

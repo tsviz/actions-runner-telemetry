@@ -569,20 +569,75 @@ def mark_step(step_name):
     
     print(f"📍 Step marked: {step_name}")
 
+
+def snapshot_collection():
+    """Quick snapshot mode - collect a few samples and save."""
+    print("📸 Taking telemetry snapshot...")
+    
+    interval = int(os.environ.get('TELEMETRY_INTERVAL', '2'))
+    
+    data = {
+        'start_time': time.time(),
+        'start_datetime': datetime.now().isoformat(),
+        'interval': interval,
+        'samples': [],
+        'initial_snapshot': {
+            'cpu_count': os.cpu_count(),
+            'memory': get_memory_info(),
+            'processes': get_top_processes(10)
+        },
+        'github_context': {
+            'repository': os.environ.get('GITHUB_REPOSITORY', 'N/A'),
+            'workflow': os.environ.get('GITHUB_WORKFLOW', 'N/A'),
+            'job': os.environ.get('GITHUB_JOB', 'N/A'),
+            'run_id': os.environ.get('GITHUB_RUN_ID', 'N/A'),
+            'run_number': os.environ.get('GITHUB_RUN_NUMBER', 'N/A'),
+            'actor': os.environ.get('GITHUB_ACTOR', 'N/A'),
+            'runner_os': os.environ.get('RUNNER_OS', 'N/A'),
+            'runner_name': os.environ.get('RUNNER_NAME', 'N/A'),
+        }
+    }
+    
+    prev_cpu = prev_cpu_detailed = prev_disk = prev_net = prev_ctxt = None
+    for i in range(6):
+        sample, prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt = collect_sample(
+            prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt
+        )
+        data['samples'].append(sample)
+        print(f'  Sample {i+1}/6: CPU={sample["cpu_percent"]:.1f}% MEM={sample["memory"]["percent"]:.1f}%')
+        if i < 5:
+            time.sleep(interval)
+    
+    data['end_time'] = time.time()
+    data['end_datetime'] = datetime.now().isoformat()
+    data['duration'] = data['end_time'] - data['start_time']
+    data['final_snapshot'] = {
+        'processes': get_top_processes(10),
+        'memory': get_memory_info()
+    }
+    
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    print(f'\n✅ Collected {len(data["samples"])} samples over {data["duration"]:.1f}s')
+
+
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         if sys.argv[1] == 'start':
             start_collection()
         elif sys.argv[1] == 'stop':
             stop_collection()
+        elif sys.argv[1] == 'snapshot':
+            snapshot_collection()
         elif sys.argv[1] == 'step' and len(sys.argv) > 2:
             step_name = ' '.join(sys.argv[2:])
             mark_step(step_name)
         elif sys.argv[1] == 'sample':
             # Single sample mode
-            sample, _, _, _ = collect_sample()
+            sample, _, _, _, _, _ = collect_sample()
             print(json.dumps(sample, indent=2))
         else:
-            print("Usage: telemetry_collector.py [start|stop|step <name>|sample]")
+            print("Usage: telemetry_collector.py [start|stop|snapshot|step <name>|sample]")
     else:
-        print("Usage: telemetry_collector.py [start|stop|step <name>|sample]")
+        print("Usage: telemetry_collector.py [start|stop|snapshot|step <name>|sample]")

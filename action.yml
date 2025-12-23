@@ -7,9 +7,9 @@ inputs:
     required: false
     default: "true"
   mode:
-    description: "Operation mode: 'auto' (default) starts collection automatically, 'step' marks a step boundary for per-step tracking, 'snapshot' for quick one-time capture."
+    description: "Operation mode: 'start' begins collection, 'stop' ends and generates report, 'step' marks a boundary, 'snapshot' for quick capture."
     required: false
-    default: "auto"
+    default: "start"
   interval:
     description: "Sampling interval in seconds for metrics collection."
     required: false
@@ -21,19 +21,118 @@ inputs:
 outputs:
   report-path:
     description: "Path to the generated telemetry report"
+    value: ${{ steps.main.outputs.report-path }}
   data-path:
     description: "Path to the raw telemetry data JSON"
+    value: ${{ steps.main.outputs.data-path }}
   csv-path:
     description: "Path to the time-series CSV file"
+    value: ${{ steps.main.outputs.csv-path }}
   summary-path:
     description: "Path to the dashboard-ready summary JSON"
+    value: ${{ steps.main.outputs.summary-path }}
   enabled:
     description: "Whether telemetry was enabled for this run"
+    value: ${{ steps.main.outputs.enabled }}
 runs:
-  using: "docker"
-  image: "Dockerfile"
-  post-entrypoint: ["/post-entrypoint.sh"]
-  post-if: "always()"
+  using: "composite"
+  steps:
+    - name: Run Telemetry Action
+      id: main
+      shell: bash
+      env:
+        INPUT_ENABLED: ${{ inputs.enabled }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_INTERVAL: ${{ inputs.interval }}
+        INPUT_STEP_NAME: ${{ inputs.step-name }}
+        TELEMETRY_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        # Check if disabled
+        if [[ "$INPUT_ENABLED" == "false" || "$INPUT_ENABLED" == "0" ]]; then
+          echo "🔍 Runner Telemetry - DISABLED"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        echo "enabled=true" >> $GITHUB_OUTPUT
+        
+        # Set up telemetry data file
+        export TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE}/.telemetry_data.json"
+        export TELEMETRY_INTERVAL="$INPUT_INTERVAL"
+        
+        case "$INPUT_MODE" in
+          start)
+            echo "::group::📊 Starting Telemetry Collection"
+            echo "🔍 Runner Telemetry Action"
+            echo ""
+            echo "System Information:"
+            echo "  OS: $(uname -s) $(uname -r)"
+            echo "  Arch: $(uname -m)"
+            echo "  CPUs: $(nproc)"
+            echo "  Memory: $(free -h | awk '/^Mem:/ {print $2}')"
+            echo "  Interval: ${INPUT_INTERVAL}s"
+            echo ""
+            
+            # Start collector in background
+            nohup python3 "${TELEMETRY_ACTION_PATH}/telemetry_collector.py" start > /tmp/telemetry_collector.log 2>&1 &
+            echo $! > /tmp/telemetry_collector.pid
+            
+            echo "✅ Telemetry collector started (PID: $(cat /tmp/telemetry_collector.pid))"
+            echo "ℹ️  Add 'mode: stop' with 'if: always()' at job end to generate report"
+            echo "::endgroup::"
+            ;;
+          
+          step)
+            STEP="${INPUT_STEP_NAME:-Step at $(date +%H:%M:%S)}"
+            echo "📍 Marking Step: $STEP"
+            python3 "${TELEMETRY_ACTION_PATH}/telemetry_collector.py" step "$STEP"
+            ;;
+          
+          stop)
+            echo "::group::📊 Stopping Telemetry & Generating Report"
+            
+            # Stop collector if running
+            if [[ -f /tmp/telemetry_collector.pid ]]; then
+              PID=$(cat /tmp/telemetry_collector.pid)
+              if kill -0 "$PID" 2>/dev/null; then
+                echo "Stopping collector (PID: $PID)..."
+                kill "$PID" 2>/dev/null || true
+                sleep 1
+              fi
+              rm -f /tmp/telemetry_collector.pid
+            fi
+            
+            # Finalize and generate report
+            python3 "${TELEMETRY_ACTION_PATH}/telemetry_collector.py" stop
+            python3 "${TELEMETRY_ACTION_PATH}/generate_report.py"
+            
+            # Set outputs
+            echo "report-path=${GITHUB_WORKSPACE}/telemetry-report.html" >> $GITHUB_OUTPUT
+            echo "data-path=${GITHUB_WORKSPACE}/telemetry-raw.json" >> $GITHUB_OUTPUT
+            echo "csv-path=${GITHUB_WORKSPACE}/telemetry-samples.csv" >> $GITHUB_OUTPUT
+            echo "summary-path=${GITHUB_WORKSPACE}/telemetry-summary.json" >> $GITHUB_OUTPUT
+            
+            echo "::endgroup::"
+            echo "✅ Telemetry report generated"
+            ;;
+          
+          snapshot)
+            echo "::group::📊 Runner Telemetry Snapshot"
+            
+            # Quick snapshot collection using the collector script
+            python3 "${TELEMETRY_ACTION_PATH}/telemetry_collector.py" snapshot
+            
+            # Generate report
+            python3 "${TELEMETRY_ACTION_PATH}/generate_report.py"
+            
+            echo "report-path=${GITHUB_WORKSPACE}/telemetry-report.html" >> $GITHUB_OUTPUT
+            echo "::endgroup::"
+            ;;
+          
+          *)
+            echo "❌ Unknown mode: $INPUT_MODE"
+            exit 1
+            ;;
+        esac
 branding:
   icon: "activity"
   color: "blue"
