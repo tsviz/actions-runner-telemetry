@@ -281,14 +281,16 @@ jobs:
         run: |
           echo "Processing large datasets..."
           python3 -c "
-          import numpy as np
-          # Create large numpy arrays
-          print('Creating large data arrays...')
+          import random
+          import time
+          # Simulate data processing without external dependencies
+          print('Creating and processing large datasets...')
           for i in range(3):
-              arr = np.random.randn(10000, 10000)
-              result = np.mean(arr)
-              print(f'  Processed array {i+1}/3 (mean: {result:.4f})')
-          print('Processing complete')
+              # Create large list (simulating data array)
+              data = [random.random() for _ in range(10000000)]
+              result = sum(data) / len(data)
+              print(f'  Processed dataset {i+1}/3 (avg: {result:.4f})')
+          print('Data processing complete')
           "
 
       # Stop and generate report
