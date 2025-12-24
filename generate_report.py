@@ -303,18 +303,28 @@ def generate_report(data):
     sampled_mem = [mem_values[i] for i in sampled_indices]
     
     # Mermaid XY chart for CPU/Memory over time
+    # Note: xychart-beta doesn't support named legends, so we create separate charts
     xy_chart = ""
     if len(x_labels) >= 2:
-        xy_chart = f'''```mermaid
+        xy_chart = f'''### 🔵 CPU Usage (%)
+
+```mermaid
 xychart-beta
-    title "Resource Usage Over Time"
+    title "CPU Usage Over Time"
     x-axis [{", ".join(x_labels)}]
-    y-axis "Percent" 0 --> 100
+    y-axis "CPU %" 0 --> 100
     line [{", ".join([f"{v:.1f}" for v in sampled_cpu])}]
-    line [{", ".join([f"{v:.1f}" for v in sampled_mem])}]
 ```
 
-> 📊 **Legend:** Line 1 = CPU %, Line 2 = Memory %
+### 🟣 Memory Usage (%)
+
+```mermaid
+xychart-beta
+    title "Memory Usage Over Time"
+    x-axis [{", ".join(x_labels)}]
+    y-axis "Memory %" 0 --> 100
+    line [{", ".join([f"{v:.1f}" for v in sampled_mem])}]
+```
 
 '''
     
