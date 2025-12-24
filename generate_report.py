@@ -276,7 +276,10 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     - recommended_runner: key in GITHUB_RUNNERS
     - reason: explanation
     - estimated_speedup: rough time savings estimate
-    - cost_comparison: cost per run comparison
+    - cost_per_min: cost of recommended runner
+    - current_cost_per_min: cost of current runner
+    - speedup_factor: multiplier for speedup (e.g., 2.0 = 2x faster)
+    - is_upgrade_possible: whether an upgrade is available
     """
     
     # Map current runner to upgrade path (same OS, larger size when available)
@@ -317,7 +320,28 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     }
     
     recommended = upgrade_paths.get(current_runner_type, 'ubuntu-latest')
+    
+    # Get current and recommended runner specs
+    current_specs = GITHUB_RUNNERS.get(current_runner_type, {})
     recommended_specs = GITHUB_RUNNERS.get(recommended, {})
+    
+    # Get actual core counts
+    current_cores = current_specs.get('vcpus', 2)
+    recommended_cores = recommended_specs.get('vcpus', 2)
+    current_cost_per_min = current_specs.get('cost_per_min', 0.006)
+    recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
+    
+    # Check if upgrade is actually possible (recommended != current)
+    is_upgrade_possible = recommended != current_runner_type
+    
+    # Calculate speedup factor
+    # Realistic speedup: assume near-linear scaling, but cap at 3x (diminishing returns)
+    if is_upgrade_possible:
+        core_ratio = recommended_cores / current_cores if current_cores > 0 else 1.0
+        # Cap at 3x realistic speedup (not all workloads scale perfectly)
+        speedup_factor = min(core_ratio, 3.0)
+    else:
+        speedup_factor = 1.0  # No upgrade available
     
     # Find reason based on what maxed out
     if max_cpu_pct >= 90 and max_mem_pct >= 90:
@@ -329,14 +353,27 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     else:
         reason = 'Resources constrained - recommend upgrade'
     
+    # Determine speedup messaging based on core upgrade
+    if speedup_factor >= 3.0:
+        speedup_estimate = '~3x faster'
+    elif speedup_factor >= 2.0:
+        speedup_estimate = f'~{speedup_factor:.1f}x faster'
+    elif speedup_factor > 1.0:
+        speedup_estimate = f'~{speedup_factor:.1f}x faster'
+    else:
+        speedup_estimate = 'Better stability, same speed'
+    
     return {
         'recommended': recommended,
-        'cores': recommended_specs.get('vcpus', 4),
-        'ram_gb': recommended_specs.get('ram_gb', 16),
+        'cores': recommended_cores,
+        'ram_gb': recommended_specs.get('ram_gb', 7),
         'reason': reason,
-        'speedup_estimate': '~2x faster' if recommended_specs.get('vcpus', 4) >= 4 else 'Similar speed, better stability',
-        'cost_per_min': recommended_specs.get('cost_per_min', 0.012),
+        'speedup_estimate': speedup_estimate,
+        'speedup_factor': speedup_factor,
+        'cost_per_min': recommended_cost_per_min,
+        'current_cost_per_min': current_cost_per_min,
         'name': recommended_specs.get('name', 'larger runner'),
+        'is_upgrade_possible': is_upgrade_possible,
     }
 
 def generate_utilization_section(data, analyzed_steps=None):
@@ -459,13 +496,34 @@ GitHub hosted runners are cost-effective when properly utilized:
         )
         
         recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
-        current_cost_per_min = 0.006  # 2-core default
+        current_cost_per_min = upgrade_rec['current_cost_per_min']
         new_cost_per_min = upgrade_rec['cost_per_min']
+        speedup_factor = upgrade_rec['speedup_factor']
         duration_min = max(1, math.ceil(duration_sec / 60))
         
+        # Estimate duration on new runner
+        estimated_new_duration_min = duration_min / speedup_factor
+        
+        # Cost calculations
         current_run_cost = current_cost_per_min * duration_min
-        new_run_cost = new_cost_per_min * duration_min
+        new_run_cost = new_cost_per_min * estimated_new_duration_min  # With speed benefit
         cost_diff = new_run_cost - current_run_cost
+        
+        # Monthly costs (10 runs/day = 300 runs/month)
+        current_monthly = current_cost_per_min * duration_min * 10 * 30
+        new_monthly = new_cost_per_min * estimated_new_duration_min * 10 * 30
+        monthly_diff = new_monthly - current_monthly
+        
+        # Value messaging
+        if not upgrade_rec['is_upgrade_possible']:
+            upgrade_note = '**ℹ️ Note:** This runner is already the largest available in its family.'
+        elif cost_diff < 0:
+            savings_pct = abs(cost_diff / current_run_cost * 100)
+            upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
+        elif speedup_factor > 1.5:
+            upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Higher cost per minute, but less total time = often similar or better overall value.'
+        else:
+            upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
         
         section += f'''
 **Priority: Upgrade to Larger Runner ⚠️**
@@ -478,16 +536,19 @@ Your job is **straining resources** on the current runner:
 
 **Why:** {upgrade_rec['reason']}
 
-**Expected Benefit:** {upgrade_rec['speedup_estimate']}
+**Expected Performance:** {upgrade_rec['speedup_estimate']} (upgrade from {upgrade_rec['cores'] / speedup_factor:.0f} to {upgrade_rec['cores']} cores)
 
-**Cost Impact (for this job):**
-- Current: ${current_run_cost:.4f}/run
-- Recommended: ${new_run_cost:.4f}/run
-- Difference: +${cost_diff:.4f}/run (or -{-cost_diff:.4f}/run if faster)
+**Cost Impact (accounting for faster execution):**
+- Current: ${current_run_cost:.4f}/run ({duration_min:.0f} min @ ${current_cost_per_min:.4f}/min)
+- Recommended: ${new_run_cost:.4f}/run (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
+- **Per-run difference: {'-$' if cost_diff < 0 else '+$'}{abs(cost_diff):.4f}** ({'-' if cost_diff < 0 else '+'}{(cost_diff/current_run_cost*100):.0f}%)
 
-**Estimated Monthly Cost** (10 runs/day):
-- Current: ${current_cost_per_min * duration_min * 10 * 30:.2f}
-- Recommended: ${new_cost_per_min * duration_min * 10 * 30:.2f}
+**Monthly Cost Comparison** (10 runs/day, 300 runs/month):
+- Current: ${current_monthly:.2f}
+- Recommended: ${new_monthly:.2f}
+- **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
+
+{upgrade_note}
 
 **How to Switch:**
 In your workflow, change:
