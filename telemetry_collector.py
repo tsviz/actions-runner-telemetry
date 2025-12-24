@@ -478,17 +478,29 @@ def start_collection():
                 prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt
             )
             
-            # Load existing data
-            with open(DATA_FILE, 'r') as f:
-                data = json.load(f)
+            # Load existing data with error handling
+            try:
+                with open(DATA_FILE, 'r') as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"  ⚠️  Failed to read data file, retrying: {e}")
+                time.sleep(0.1)
+                continue
             
             # Append sample
             data['samples'].append(sample)
             data['last_update'] = time.time()
             
-            # Save
-            with open(DATA_FILE, 'w') as f:
-                json.dump(data, f)
+            # Save with atomic write (write to temp file, then rename)
+            temp_file = DATA_FILE + '.tmp'
+            try:
+                with open(temp_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                os.replace(temp_file, DATA_FILE)
+            except (IOError, OSError) as e:
+                print(f"  ⚠️  Failed to write data file: {e}")
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
             
             iowait = sample.get('cpu_iowait_percent', 0)
             steal = sample.get('cpu_steal_percent', 0)
@@ -504,8 +516,20 @@ def stop_collection():
         print("No telemetry data found")
         return None
     
-    with open(DATA_FILE, 'r') as f:
-        data = json.load(f)
+    # Retry logic for race conditions
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(DATA_FILE, 'r') as f:
+                data = json.load(f)
+            break
+        except json.JSONDecodeError:
+            if attempt < max_retries - 1:
+                time.sleep(0.1)
+                continue
+            else:
+                print("⚠️  Failed to read telemetry data, using partial data")
+                return None
     
     data['end_time'] = time.time()
     data['end_datetime'] = datetime.now().isoformat()
@@ -523,8 +547,17 @@ def stop_collection():
             last_step['end_datetime'] = datetime.now().isoformat()
             last_step['duration'] = last_step['end_time'] - last_step['start_time']
     
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    # Atomic write
+    temp_file = DATA_FILE + '.tmp'
+    try:
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, DATA_FILE)
+    except (IOError, OSError) as e:
+        print(f"⚠️  Failed to finalize data: {e}")
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        return None
     
     print(f"📊 Collection complete: {len(data['samples'])} samples over {data['duration']:.1f}s")
     return data
@@ -535,8 +568,20 @@ def mark_step(step_name):
         print(f"⚠️  No telemetry data file found. Start collection first.")
         return
     
-    with open(DATA_FILE, 'r') as f:
-        data = json.load(f)
+    # Retry logic for race conditions
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(DATA_FILE, 'r') as f:
+                data = json.load(f)
+            break
+        except json.JSONDecodeError:
+            if attempt < max_retries - 1:
+                time.sleep(0.05)
+                continue
+            else:
+                print(f"⚠️  Failed to read telemetry data after {max_retries} attempts")
+                return
     
     current_time = time.time()
     current_datetime = datetime.now().isoformat()
@@ -564,8 +609,17 @@ def mark_step(step_name):
     }
     data['steps'].append(new_step)
     
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f)
+    # Atomic write
+    temp_file = DATA_FILE + '.tmp'
+    try:
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, DATA_FILE)
+    except (IOError, OSError) as e:
+        print(f"⚠️  Failed to write step marker: {e}")
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        return
     
     print(f"📍 Step marked: {step_name}")
 

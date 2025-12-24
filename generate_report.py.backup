@@ -3,9 +3,6 @@
 Generate visual telemetry report for GitHub Step Summary.
 Uses Mermaid diagrams (natively supported by GitHub) and modern markdown styling.
 Also generates an interactive HTML dashboard artifact.
-
-Key Feature: Helps users understand if they're fully utilizing GitHub hosted runners
-to maximize value and optimize costs.
 """
 
 import os
@@ -31,59 +28,6 @@ THRESHOLDS = {
     'iowait_critical': 30,
     'steal_warning': 5,
     'steal_critical': 15,
-}
-
-# GitHub Hosted Runner Specifications with 2026 Pricing
-# https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions
-GITHUB_RUNNERS = {
-    # Standard runners
-    'ubuntu-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 2-core'},
-    'ubuntu-24.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 24.04'},
-    'ubuntu-22.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 22.04'},
-    'ubuntu-20.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 20.04'},
-    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 3, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Ubuntu 1-core'},
-    'windows-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core'},
-    'windows-2022': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2022'},
-    'windows-2019': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2019'},
-    'macos-latest': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 3-core'},
-    'macos-14': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 14'},
-    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 13'},
-    'macos-12': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 12'},
-    
-    # x64 Larger runners
-    'ubuntu-latest-2-cores': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 2-core'},
-    'ubuntu-latest-4-cores': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 150, 'name': 'Ubuntu 4-core'},
-    'ubuntu-latest-8-cores': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 300, 'name': 'Ubuntu 8-core'},
-    'ubuntu-latest-16-cores': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.042, 'storage_gb': 600, 'name': 'Ubuntu 16-core'},
-    'ubuntu-latest-32-cores': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.082, 'storage_gb': 1200, 'name': 'Ubuntu 32-core'},
-    'ubuntu-latest-64-cores': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.162, 'storage_gb': 2040, 'name': 'Ubuntu 64-core'},
-    'ubuntu-latest-96-cores': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.252, 'storage_gb': 3060, 'name': 'Ubuntu 96-core'},
-    
-    'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 150, 'name': 'Windows 4-core'},
-    'windows-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 300, 'name': 'Windows 8-core'},
-    'windows-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.082, 'storage_gb': 600, 'name': 'Windows 16-core'},
-    'windows-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.162, 'storage_gb': 1200, 'name': 'Windows 32-core'},
-    'windows-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.322, 'storage_gb': 2040, 'name': 'Windows 64-core'},
-    'windows-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.552, 'storage_gb': 3060, 'name': 'Windows 96-core'},
-    
-    'macos-l': {'vcpus': 12, 'ram_gb': 28, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core'},
-    'macos-xl': {'vcpus': 5, 'ram_gb': 32, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS M2 Pro'},
-    
-    # ARM runners
-    'ubuntu-latest-arm-2-cores': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.005, 'storage_gb': 14, 'name': 'Ubuntu ARM 2-core'},
-    'ubuntu-latest-arm-4-cores': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 150, 'name': 'Ubuntu ARM 4-core'},
-    'ubuntu-latest-arm-8-cores': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 300, 'name': 'Ubuntu ARM 8-core'},
-    'ubuntu-latest-arm-16-cores': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.026, 'storage_gb': 600, 'name': 'Ubuntu ARM 16-core'},
-    'ubuntu-latest-arm-32-cores': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.050, 'storage_gb': 1200, 'name': 'Ubuntu ARM 32-core'},
-    'ubuntu-latest-arm-64-cores': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.098, 'storage_gb': 2040, 'name': 'Ubuntu ARM 64-core'},
-}
-
-# Utilization thresholds for scoring
-UTILIZATION_THRESHOLDS = {
-    'excellent': 70,  # 70%+ utilization = excellent
-    'good': 50,       # 50-70% = good
-    'fair': 30,       # 30-50% = fair
-    'poor': 0,        # <30% = poor (wasting resources)
 }
 
 def get_health_status(value, warning_threshold, critical_threshold):
@@ -112,270 +56,65 @@ def format_duration(seconds):
     else:
         return f"{seconds/3600:.1f}h"
 
-def get_utilization_grade(utilization_pct):
-    """Get utilization grade and recommendation."""
-    if utilization_pct >= UTILIZATION_THRESHOLDS['excellent']:
-        return 'A', '🟢 Excellent', 'Runner is well-utilized'
-    elif utilization_pct >= UTILIZATION_THRESHOLDS['good']:
-        return 'B', '🟢 Good', 'Runner utilization is healthy'
-    elif utilization_pct >= UTILIZATION_THRESHOLDS['fair']:
-        return 'C', '🟡 Fair', 'Consider optimizing or using a smaller runner'
-    else:
-        return 'D', '🔴 Poor', 'Runner is significantly underutilized'
+def create_mermaid_pie_chart(title, data):
+    """Create a Mermaid pie chart."""
+    chart = f'```mermaid\npie showData title {title}\n'
+    for label, value in data.items():
+        if value > 0:
+            chart += f'    "{label}" : {value:.1f}\n'
+    chart += '```\n'
+    return chart
 
-def detect_runner_type(data):
-    """Detect the runner type from the data."""
-    ctx = data.get('github_context', {})
-    runner_os = ctx.get('runner_os', 'Linux').lower()
-    initial = data.get('initial_snapshot', {})
-    cpu_count = initial.get('cpu_count', 2)
+def create_mermaid_xy_chart(title, x_labels, datasets, y_title="Value"):
+    """Create a Mermaid XY chart (bar or line)."""
+    # Mermaid xychart-beta for time series
+    chart = f'```mermaid\nxychart-beta\n    title "{title}"\n'
+    chart += f'    x-axis [{", ".join(x_labels)}]\n'
+    chart += f'    y-axis "{y_title}"\n'
     
-    if 'windows' in runner_os:
-        return 'windows-latest'
-    elif 'macos' in runner_os:
-        return 'macos-latest'
-    else:
-        return 'ubuntu-latest'
+    for name, values in datasets.items():
+        values_str = ", ".join([f"{v:.1f}" for v in values])
+        chart += f'    line [{values_str}]\n'
+    
+    chart += '```\n'
+    return chart
 
-def calculate_utilization_score(data):
-    """Calculate the overall runner utilization score."""
-    samples = data.get('samples', [])
-    if not samples:
-        return None
-    
-    initial = data.get('initial_snapshot', {})
-    cpu_count = initial.get('cpu_count', 2)
-    total_ram_mb = initial.get('memory', {}).get('total_mb', 7000)
-    
-    cpu_values = [s['cpu_percent'] for s in samples]
-    mem_values = [s['memory']['percent'] for s in samples]
-    
-    avg_cpu = sum(cpu_values) / len(cpu_values)
-    max_cpu = max(cpu_values)
-    avg_mem = sum(mem_values) / len(mem_values)
-    max_mem = max(mem_values)
-    
-    # Combined utilization score (weighted: CPU 60%, Memory 40%)
-    utilization_score = (max_cpu * 0.6) + (max_mem * 0.4)
-    
-    return {
-        'score': utilization_score,
-        'avg_cpu_pct': avg_cpu,
-        'max_cpu_pct': max_cpu,
-        'avg_mem_pct': avg_mem,
-        'max_mem_pct': max_mem,
-        'total_cpu_cores': cpu_count,
-        'total_ram_gb': total_ram_mb / 1024,
-    }
-
-def calculate_cost_analysis(data, utilization, analyzed_steps=None):
-    """Calculate cost analysis and potential savings."""
-    if not utilization:
-        return None
-    
-    duration_seconds = data.get('duration', 0)
-    duration_minutes = max(1, math.ceil(duration_seconds / 60))  # GitHub rounds up to nearest minute
-    
-    runner_type = detect_runner_type(data)
-    runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest'])
-    
-    current_cost = duration_minutes * runner_specs['cost_per_min']
-    
-    right_sized_runner = runner_type
-    potential_savings = 0
-    
-    avg_cpu = utilization['avg_cpu_pct']
-    avg_mem = utilization['avg_mem_pct']
-    
-    # Check for right-sizing opportunity (under 40% utilization)
-    if avg_cpu < 40 and avg_mem < 40:
-        # Find smaller runner that could work
-        for name, specs in sorted(GITHUB_RUNNERS.items(), key=lambda x: x[1]['cost_per_min']):
-            if specs['cost_per_min'] < runner_specs['cost_per_min']:
-                new_cost = duration_minutes * specs['cost_per_min']
-                if new_cost < current_cost:
-                    right_sized_runner = name
-                    potential_savings = current_cost - new_cost
-                    break
-    
-    # Check for parallelization opportunities
-    parallelization_opportunity = None
-    if analyzed_steps:
-        for step in analyzed_steps:
-            if step['avg_cpu'] < 25 and step['duration'] > 30:
-                parallelization_opportunity = {
-                    'step': step['name'],
-                    'duration': step['duration'],
-                    'avg_cpu': step['avg_cpu'],
-                }
-                break
-    
-    runs_per_day = 10
-    monthly_runs = runs_per_day * 30
-    
-    return {
-        'runner_type': runner_type,
-        'runner_specs': runner_specs,
-        'duration_minutes': duration_minutes,
-        'current_cost': current_cost,
-        'right_sized_runner': right_sized_runner,
-        'potential_savings': potential_savings,
-        'monthly_cost': current_cost * monthly_runs,
-        'monthly_savings': potential_savings * monthly_runs,
-        'parallelization_opportunity': parallelization_opportunity,
-    }
-
-def detect_idle_time(data):
-    """Detect periods of low activity."""
-    samples = data.get('samples', [])
-    if len(samples) < 3:
-        return None
-    
-    idle_threshold = 5
-    interval = data.get('interval', 2)
-    total_idle = 0
-    
-    for sample in samples:
-        if sample['cpu_percent'] < idle_threshold:
-            total_idle += interval
-    
-    total_duration = data.get('duration', 0)
-    
-    return {
-        'total_idle_seconds': total_idle,
-        'idle_percentage': (total_idle / total_duration * 100) if total_duration > 0 else 0,
-    }
-
-def generate_utilization_section(data, analyzed_steps=None):
-    """Generate the runner utilization and cost efficiency section."""
-    utilization = calculate_utilization_score(data)
-    if not utilization:
+def create_mermaid_gantt(title, steps, duration):
+    """Create a Mermaid Gantt chart for step timeline."""
+    if not steps:
         return ""
     
-    cost_analysis = calculate_cost_analysis(data, utilization, analyzed_steps)
-    idle_analysis = detect_idle_time(data)
+    chart = f'```mermaid\ngantt\n    title {title}\n    dateFormat s\n    axisFormat %S\n\n'
     
-    grade, grade_text, grade_desc = get_utilization_grade(utilization['score'])
+    for step in steps:
+        name = step['name'][:25].replace('"', "'")
+        start = int(step.get('start_offset', 0))
+        dur = max(1, int(step['duration']))
+        chart += f'    {name} : {start}, {dur}s\n'
     
-    score = utilization['score']
-    filled = int(score / 5)
-    gauge = "█" * filled + "░" * (20 - filled)
+    chart += '```\n'
+    return chart
+
+def create_resource_bar(value, max_val=100, label=""):
+    """Create a visual resource bar using HTML that GitHub supports."""
+    percent = min(value / max_val * 100, 100) if max_val > 0 else 0
     
-    section = f'''
----
-
-## 💰 Runner Utilization & Cost Efficiency
-
-> **Key Question:** Are you getting maximum value from your GitHub hosted runner?
-
-### Utilization Score: {grade} ({score:.0f}%)
-
-{grade_text} - {grade_desc}
-
-`{gauge}` **{score:.1f}%**
-
-### 📊 What You're Paying For vs What You're Using
-
-| Resource | Available | Peak Used | Avg Used |
-|:---------|----------:|----------:|---------:|
-| **CPU Cores** | {utilization['total_cpu_cores']} | {(utilization['max_cpu_pct']/100*utilization['total_cpu_cores']):.1f} | {(utilization['avg_cpu_pct']/100*utilization['total_cpu_cores']):.1f} |
-| **RAM** | {utilization['total_ram_gb']:.1f} GB | {(utilization['max_mem_pct']/100*utilization['total_ram_gb']):.1f} GB | {(utilization['avg_mem_pct']/100*utilization['total_ram_gb']):.1f} GB |
-
-'''
-    
-    if cost_analysis:
-        section += f'''### 💵 Cost Analysis (Jan 2026+ Pricing)
-
-| Metric | Value |
-|:-------|------:|
-| **Runner Type** | `{cost_analysis['runner_specs']['name']}` |
-| **This Run** | ${cost_analysis['current_cost']:.4f} ({int(cost_analysis['duration_minutes'])} min) |
-| **Est. Monthly** (10 runs/day) | ${cost_analysis['monthly_cost']:.2f} |
-
-'''
-        
-        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type']:
-            right_specs = GITHUB_RUNNERS[cost_analysis['right_sized_runner']]
-            savings_pct = (cost_analysis['potential_savings'] / cost_analysis['current_cost'] * 100) if cost_analysis['current_cost'] > 0 else 0
-            section += f'''
-> 💡 **Optimization Opportunity: Right-Size Your Runner**
->
-> Based on your usage, `{right_specs['name']}` would be more cost-effective:
->
-> | | Current | Right-Sized | Savings |
-> |:--|--------:|----------:|--------:|
-> | **Per Run** | ${cost_analysis['current_cost']:.4f} | ${cost_analysis['current_cost'] - cost_analysis['potential_savings']:.4f} | **${cost_analysis['potential_savings']:.4f}** ({savings_pct:.0f}%) |
-> | **Monthly** | ${cost_analysis['monthly_cost']:.2f} | ${cost_analysis['monthly_cost'] - cost_analysis['monthly_savings']:.2f} | **${cost_analysis['monthly_savings']:.2f}** |
->
-> **Action:** Change `runs-on:` to `{cost_analysis['right_sized_runner']}` in your workflow
-
-'''
-        
-        if cost_analysis['parallelization_opportunity']:
-            opp = cost_analysis['parallelization_opportunity']
-            section += f'''
-> ⚡ **Performance Optimization: Parallelize Slow Steps**
->
-> Step **"{opp['step']}"** uses only {opp['avg_cpu']:.0f}% CPU for {opp['duration']:.0f}s.
-> Consider using matrix strategy to run parallel jobs - same cost, faster completion.
-
-'''
-    
-    if idle_analysis and idle_analysis['idle_percentage'] > 10:
-        section += f'''
-### ⏳ Idle Time Detected
-
-**{idle_analysis['total_idle_seconds']:.0f}s ({idle_analysis['idle_percentage']:.0f}%)** of job time had minimal CPU activity.
-
-Common causes:
-- Waiting for package downloads (use caching)
-- Sequential steps that could be parallelized
-- Inefficient workflow design
-
-'''
-    
-    # Decision helper - no self-hosted recommendation
-    section += '''
-### 🎯 Optimization Strategy
-
-GitHub hosted runners are cost-effective when properly utilized:
-
-'''
-    
-    if utilization['score'] < 30:
-        section += f'''
-**Priority: High Utilization Improvement**
-
-1. **Right-size runner** - Use smaller instance (check suggestion above)
-2. **Parallelize jobs** - Use matrix builds for independent steps  
-3. **Optimize caching** - Cache dependencies to reduce download time
-4. **Check for bottlenecks** - Identify and optimize slow sequential steps
-
-With these optimizations, you can typically achieve 50-70% utilization and reduce costs by 30-50%.
-
-'''
-    elif utilization['score'] >= 70:
-        section += f'''
-**Status: Well-Optimized ✅**
-
-Your runner utilization is excellent at {utilization['score']:.0f}%. Continue:
-- Monitoring trends over time
-- Considering larger runners only if hitting resource limits
-- Regular performance reviews
-
-'''
+    # Determine color based on thresholds
+    if percent >= 85:
+        color = "#ef4444"  # red
+        status = "🔴"
+    elif percent >= 60:
+        color = "#f59e0b"  # yellow
+        status = "🟡"
     else:
-        section += f'''
-**Status: Good with Room for Improvement**
-
-Current utilization ({utilization['score']:.0f}%) is healthy. Next steps:
-- Implement parallelization for slow steps
-- Review caching strategies
-- Monitor if you need a larger runner as usage grows
-
-'''
+        color = "#22c55e"  # green
+        status = "🟢"
     
-    return section
+    # Create bar using unicode blocks with color indicator
+    filled = int(percent / 5)  # 20 blocks total
+    bar = "█" * filled + "░" * (20 - filled)
+    
+    return f"{status} `{bar}` **{value:.1f}%**"
 
 def analyze_steps(data):
     """Analyze step-level metrics."""
@@ -403,24 +142,22 @@ def analyze_steps(data):
             
             analyzed_step = {
                 'name': step['name'],
+                'start_offset': step_start - start_time,
                 'duration': step_end - step_start,
                 'sample_count': len(step_samples),
                 'avg_cpu': sum(cpu_values) / len(cpu_values),
                 'max_cpu': max(cpu_values),
                 'avg_mem': sum(mem_values) / len(mem_values),
                 'max_mem': max(mem_values),
-                'cpu_values': cpu_values,
-                'mem_values': mem_values,
             }
         else:
             analyzed_step = {
                 'name': step['name'],
+                'start_offset': step_start - start_time,
                 'duration': step_end - step_start,
                 'sample_count': 0,
                 'avg_cpu': 0, 'max_cpu': 0,
                 'avg_mem': 0, 'max_mem': 0,
-                'cpu_values': [],
-                'mem_values': [],
             }
         
         analyzed_steps.append(analyzed_step)
@@ -428,7 +165,7 @@ def analyze_steps(data):
     return analyzed_steps
 
 def generate_steps_section(data):
-    """Generate the per-step analysis section."""
+    """Generate the per-step analysis section with Mermaid charts."""
     analyzed_steps = analyze_steps(data)
     
     if not analyzed_steps:
@@ -440,13 +177,30 @@ def generate_steps_section(data):
     heaviest_mem = max(analyzed_steps, key=lambda s: s['avg_mem'])
     longest_step = max(analyzed_steps, key=lambda s: s['duration'])
     
+    # Create Gantt timeline
+    gantt = create_mermaid_gantt("Step Timeline", analyzed_steps, duration)
+    
+    # Create pie chart for CPU distribution - show avg CPU per step (more intuitive)
+    cpu_data = {s['name'][:15]: s['avg_cpu'] for s in analyzed_steps if s['avg_cpu'] > 0}
+    cpu_pie = create_mermaid_pie_chart("Avg CPU % by Step", cpu_data) if cpu_data else ""
+    
     section = f'''
 ---
 
 ## 📋 Per-Step Analysis
 
-| Step | Duration | Avg CPU | Max CPU | Avg Mem | Max Mem |
-|:-----|:--------:|:-------:|:-------:|:-------:|:-------:|
+### ⏱️ Timeline
+
+{gantt}
+
+### 📊 CPU Distribution
+
+{cpu_pie}
+
+### 📈 Step Metrics
+
+| Step | Duration | Avg CPU | Peak CPU | Avg Mem | Peak Mem |
+|:-----|:--------:|:-------:|:--------:|:-------:|:--------:|
 '''
     
     for step in analyzed_steps:
@@ -525,30 +279,10 @@ def generate_report(data):
     overall_text = {'critical': 'Needs Attention', 'warning': 'Warning', 'good': 'Healthy'}[overall]
     
     # Create resource bars
-    def create_resource_bar(value):
-        percent = min(value, 100) if value >= 0 else 0
-        filled = int(percent / 5)
-        if percent >= 85:
-            indicator = "🔴"
-        elif percent >= 60:
-            indicator = "🟡"
-        else:
-            indicator = "🟢"
-        bar = "█" * filled + "░" * (20 - filled)
-        return f"{indicator} `{bar}` {value:.1f}%"
-    
     cpu_bar = create_resource_bar(cpu_values[-1] if cpu_values else 0)
     mem_bar = create_resource_bar(mem_values[-1] if mem_values else 0)
     
-    # Create Mermaid pie charts
-    def create_mermaid_pie_chart(title, data):
-        chart = f'```mermaid\npie showData title {title}\n'
-        for label, value in data.items():
-            if value > 0:
-                chart += f'    "{label}" : {value:.1f}\n'
-        chart += '```\n'
-        return chart
-    
+    # Create Mermaid pie charts for resource usage
     resource_pie = create_mermaid_pie_chart("Resource Utilization", {
         "CPU Used": avg_cpu,
         "CPU Idle": 100 - avg_cpu,
@@ -559,15 +293,18 @@ def generate_report(data):
         "Available": 100 - avg_mem,
     })
     
-    # Create time series chart
+    # Create time series chart (sample every Nth point to keep chart readable)
     sample_count = len(samples)
-    step_size = max(1, sample_count // 12)
+    step_size = max(1, sample_count // 12)  # Max 12 data points for readability
     sampled_indices = range(0, sample_count, step_size)
     
     x_labels = [f'"{i*data.get("interval", 2)}s"' for i in sampled_indices]
     sampled_cpu = [cpu_values[i] for i in sampled_indices]
     sampled_mem = [mem_values[i] for i in sampled_indices]
     
+    # Mermaid XY chart for CPU/Memory over time
+    # Create combined chart with a visual legend header
+    # Note: Mermaid xychart-beta uses blue for line 1, green for line 2
     xy_chart = ""
     if len(x_labels) >= 2:
         xy_chart = f'''| 🔵 CPU % | 🟢 Memory % |
@@ -654,15 +391,9 @@ xychart-beta
 '''
 
     # Add per-step analysis if we have steps
-    analyzed_steps = analyze_steps(data)
     steps_section = generate_steps_section(data)
     if steps_section:
         report += steps_section
-    
-    # Add utilization and cost analysis section (KEY FEATURE)
-    utilization_section = generate_utilization_section(data, analyzed_steps)
-    if utilization_section:
-        report += utilization_section
     
     # System information section
     report += f'''
