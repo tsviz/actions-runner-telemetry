@@ -563,9 +563,13 @@ Your job is **straining resources** on the current runner:
 - Recommended: ${new_monthly:.2f}
 - **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
 
-{upgrade_note}
-
-**How to Switch:**
+        {upgrade_note}
+        
+        '''
+        
+        # Only show switch instructions if there's an actual upgrade
+        if upgrade_rec['recommended'] != current_runner:
+            section += f'''**How to Switch:**
 In your workflow, change:
 ```yaml
 runs-on: {current_runner}
@@ -575,7 +579,9 @@ to:
 runs-on: {upgrade_rec['recommended']}
 ```
 
-**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+'''
+        
+        section += f'''**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
     elif utilization['score'] < 30:
