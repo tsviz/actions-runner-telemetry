@@ -237,28 +237,29 @@ jobs:
           timeout 120 python3 << 'PYTHON_EOF'
           import time
           import os
+          import multiprocessing
           
           print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
           
-          # Allocate moderate memory arrays
-          print("💾 Pre-allocating memory (1.5GB sustained)...")
+          # Allocate memory arrays
+          print("💾 Pre-allocating memory (2GB sustained)...")
           huge_arrays = []
           
-          # Create 2 large arrays (more conservative than 3GB)
-          for idx in range(2):
-              # 750MB each = 1.5GB total (10% of available 15GB)
-              arr = list(range(100000000))  # 100M integers = ~750MB
+          # Create large arrays 
+          for idx in range(3):
+              # ~667MB each = 2GB total (~13% of available 15GB)
+              arr = list(range(150000000))  # 150M integers
               huge_arrays.append(arr)
-              print(f"   Array {idx+1}/2 allocated (~750MB)")
+              print(f"   Array {idx+1}/3 allocated (~667MB)")
           
           print("⚡ Starting CPU-intensive work while holding memory...")
           start_time = time.time()
           
-          # Do heavy CPU work WHILE memory is held
+          # Do heavy CPU work WHILE memory is held - 3 rounds
           total_result = 0
-          for round_num in range(2):
-              print(f"   Computation round {round_num+1}/2...")
+          for round_num in range(3):
+              print(f"   Computation round {round_num+1}/3...")
               
               # Iterate through the large arrays (forces memory access and usage)
               for arr in huge_arrays:
@@ -268,15 +269,15 @@ jobs:
               
               # Additional CPU-bound computation
               cpu_result = 0
-              for i in range(30000000):  # Reduced from 50M to 30M
+              for i in range(40000000):  # Increased to 40M iterations
                   cpu_result += (i * i) % 1000000
               total_result += cpu_result
           
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Total computation result: {total_result}")
-          print(f"   Memory sustained: ~1.5GB throughout")
-          print(f"✅ Heavy workload finished - peak CPU 85-95%, peak Memory 10-15%")
+          print(f"   Memory sustained: ~2GB throughout")
+          print(f"✅ Heavy workload finished - demonstrates resource stress")
           PYTHON_EOF
           
 
