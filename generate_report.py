@@ -286,10 +286,10 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     # Note: GitHub's standard runners have limited larger options
     upgrade_paths = {
         # Linux upgrades
-        'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core upgrade
-        'ubuntu-latest': 'ubuntu-24.04-arm',  # No larger x64 Linux, suggest ARM for more cores
-        'ubuntu-24.04': 'ubuntu-24.04-arm',
-        'ubuntu-22.04': 'ubuntu-22.04-arm',
+        'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core upgrade (both x64)
+        'ubuntu-latest': 'ubuntu-latest',  # No larger x64 Linux available (see notes below)
+        'ubuntu-24.04': 'ubuntu-24.04',   # No larger x64 Linux available
+        'ubuntu-22.04': 'ubuntu-22.04',   # No larger x64 Linux available
         
         # Linux ARM upgrades (4-core is max for standard)
         'ubuntu-24.04-arm': 'ubuntu-24.04-arm',  # Already max for standard
@@ -516,7 +516,22 @@ GitHub hosted runners are cost-effective when properly utilized:
         
         # Value messaging
         if not upgrade_rec['is_upgrade_possible']:
-            upgrade_note = '**ℹ️ Note:** This runner is already the largest available in its family.'
+            # No upgrade available - explain the limitation
+            if current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
+                upgrade_note = '''**ℹ️ Limitation:** GitHub's standard Linux x64 runners max out at 2 cores. 
+Options to address overutilization:
+1. **Optimize the build:** Parallelize jobs, improve caching, reduce dependencies
+2. **Use ARM runner:** `ubuntu-24.04-arm` (4-core) - verify build works on ARM
+3. **Consider different OS:** macOS runners have larger options (see pricing link)
+4. **Investigate bottlenecks:** Check if specific tools/dependencies can be optimized'''
+            elif current_runner in ['windows-latest', 'windows-2025', 'windows-2022']:
+                upgrade_note = '''**ℹ️ Limitation:** GitHub's standard Windows x64 runners max out at 2 cores.
+Options to address overutilization:
+1. **Optimize the build:** Parallelize jobs, improve caching, reduce dependencies
+2. **Use ARM runner:** `windows-11-arm` (4-core) - verify build works on ARM  
+3. **Investigate bottlenecks:** Check if specific tools can be optimized'''
+            else:
+                upgrade_note = '**ℹ️ Note:** This runner is already at the maximum size available in its family.'
         elif cost_diff < 0:
             savings_pct = abs(cost_diff / current_run_cost * 100)
             upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
