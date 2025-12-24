@@ -329,6 +329,8 @@ def generate_utilization_section(data, analyzed_steps=None):
     if cost_analysis:
         section += f'''### 💵 Cost Analysis (Jan 2026+ Pricing)
 
+> 📖 Pricing reference: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
 | Metric | Value |
 |:-------|------:|
 | **Runner Type** | `{cost_analysis['runner_specs']['name']}` |
@@ -387,7 +389,28 @@ GitHub hosted runners are cost-effective when properly utilized:
 
 '''
     
-    if utilization['score'] < 30:
+    # Check for overutilization (CPU or Memory at 90%+)
+    is_overutilized = (utilization['max_cpu_pct'] >= 90 or utilization['max_mem_pct'] >= 90)
+    
+    if is_overutilized:
+        section += f'''
+**Priority: Upgrade to Larger Runner ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+**Recommended Actions:**
+1. **Upgrade runner** - Larger instance will reduce execution time and improve reliability
+2. **Optimize code** - Profile and reduce computational complexity if possible
+3. **Monitor cost/time trade-off** - Faster runs may offset higher per-minute cost
+
+**Compare runner options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+See right-sizing suggestions below for cost comparison.
+
+'''
+    elif utilization['score'] < 30:
         section += f'''
 **Priority: High Utilization Improvement**
 
