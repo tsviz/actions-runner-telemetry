@@ -495,52 +495,38 @@ GitHub hosted runners are cost-effective when properly utilized:
             current_runner_type=current_runner
         )
         
-        recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
-        current_cost_per_min = upgrade_rec['current_cost_per_min']
-        new_cost_per_min = upgrade_rec['cost_per_min']
-        speedup_factor = upgrade_rec['speedup_factor']
-        duration_min = max(1, math.ceil(duration_sec / 60))
-        
-        # Estimate duration on new runner
-        estimated_new_duration_min = duration_min / speedup_factor
-        
-        # Cost calculations
-        current_run_cost = current_cost_per_min * duration_min
-        new_run_cost = new_cost_per_min * estimated_new_duration_min  # With speed benefit
-        cost_diff = new_run_cost - current_run_cost
-        
-        # Monthly costs (10 runs/day = 300 runs/month)
-        current_monthly = current_cost_per_min * duration_min * 10 * 30
-        new_monthly = new_cost_per_min * estimated_new_duration_min * 10 * 30
-        monthly_diff = new_monthly - current_monthly
-        
-        # Value messaging
-        if not upgrade_rec['is_upgrade_possible']:
-            # No upgrade available - explain the limitation
-            if current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
-                upgrade_note = '''**ℹ️ Limitation:** GitHub's standard Linux x64 runners max out at 2 cores. 
-Options to address overutilization:
-1. **Optimize the build:** Parallelize jobs, improve caching, reduce dependencies
-2. **Use ARM runner:** `ubuntu-24.04-arm` (4-core) - verify build works on ARM
-3. **Consider different OS:** macOS runners have larger options (see pricing link)
-4. **Investigate bottlenecks:** Check if specific tools/dependencies can be optimized'''
-            elif current_runner in ['windows-latest', 'windows-2025', 'windows-2022']:
-                upgrade_note = '''**ℹ️ Limitation:** GitHub's standard Windows x64 runners max out at 2 cores.
-Options to address overutilization:
-1. **Optimize the build:** Parallelize jobs, improve caching, reduce dependencies
-2. **Use ARM runner:** `windows-11-arm` (4-core) - verify build works on ARM  
-3. **Investigate bottlenecks:** Check if specific tools can be optimized'''
+        # Check if upgrade is actually possible
+        if upgrade_rec['is_upgrade_possible']:
+            # Show upgrade recommendation
+            recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
+            current_cost_per_min = upgrade_rec['current_cost_per_min']
+            new_cost_per_min = upgrade_rec['cost_per_min']
+            speedup_factor = upgrade_rec['speedup_factor']
+            duration_min = max(1, math.ceil(duration_sec / 60))
+            
+            # Estimate duration on new runner
+            estimated_new_duration_min = duration_min / speedup_factor
+            
+            # Cost calculations
+            current_run_cost = current_cost_per_min * duration_min
+            new_run_cost = new_cost_per_min * estimated_new_duration_min  # With speed benefit
+            cost_diff = new_run_cost - current_run_cost
+            
+            # Monthly costs (10 runs/day = 300 runs/month)
+            current_monthly = current_cost_per_min * duration_min * 10 * 30
+            new_monthly = new_cost_per_min * estimated_new_duration_min * 10 * 30
+            monthly_diff = new_monthly - current_monthly
+            
+            # Value messaging
+            if cost_diff < 0:
+                savings_pct = abs(cost_diff / current_run_cost * 100)
+                upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
+            elif speedup_factor > 1.5:
+                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Higher cost per minute, but less total time = often similar or better overall value.'
             else:
-                upgrade_note = '**ℹ️ Note:** This runner is already at the maximum size available in its family.'
-        elif cost_diff < 0:
-            savings_pct = abs(cost_diff / current_run_cost * 100)
-            upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
-        elif speedup_factor > 1.5:
-            upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Higher cost per minute, but less total time = often similar or better overall value.'
-        else:
-            upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
-        
-        section += f'''
+                upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
+            
+            section += f'''
 **Priority: Upgrade to Larger Runner ⚠️**
 
 Your job is **straining resources** on the current runner:
@@ -563,13 +549,9 @@ Your job is **straining resources** on the current runner:
 - Recommended: ${new_monthly:.2f}
 - **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
 
-        {upgrade_note}
-        
-        '''
-        
-        # Only show switch instructions if there's an actual upgrade
-        if upgrade_rec['recommended'] != current_runner:
-            section += f'''**How to Switch:**
+{upgrade_note}
+
+**How to Switch:**
 In your workflow, change:
 ```yaml
 runs-on: {current_runner}
@@ -579,9 +561,94 @@ to:
 runs-on: {upgrade_rec['recommended']}
 ```
 
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
 '''
-        
-        section += f'''**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+        else:
+            # No upgrade available - show optimization strategies
+            if current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
+                section += f'''
+**Priority: Optimize Build (No Larger x64 Runner Available) ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+**Limitation:** GitHub's standard Linux x64 runners max out at 2 cores.
+
+**Options to address overutilization:**
+
+1. **🔧 Optimize the build** - This is the most cost-effective approach:
+   - Parallelize jobs using matrix strategy
+   - Improve dependency caching (npm, pip, apt, etc.)
+   - Remove unnecessary dependencies
+   - Profile slow steps and optimize hot paths
+
+2. **🔄 Use ARM runner** - If your build is architecture-agnostic:
+   - Change to `ubuntu-24.04-arm` (4-core, same cost/min)
+   - Verify all dependencies work on ARM64
+   - Usually 10-20% faster due to more cores
+
+3. **🍎 Try macOS runners** - If compatible:
+   - `macos-latest-xlarge`: 5-core M2 Apple Silicon (~13x cost, same speed)
+   - `macos-13-large`: 12-core Intel (~16x cost, much faster)
+
+4. **🔍 Investigate bottlenecks:**
+   - Check if specific tools can be optimized
+   - Profile CPU and memory usage per step
+   - Consider using faster alternatives
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+'''
+            elif current_runner in ['windows-latest', 'windows-2025', 'windows-2022']:
+                section += f'''
+**Priority: Optimize Build (No Larger x64 Runner Available) ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+**Limitation:** GitHub's standard Windows x64 runners max out at 2 cores.
+
+**Options to address overutilization:**
+
+1. **🔧 Optimize the build** - This is the most cost-effective approach:
+   - Parallelize jobs using matrix strategy
+   - Improve dependency caching (NuGet, npm, etc.)
+   - Remove unnecessary dependencies
+   - Profile slow steps and optimize
+
+2. **🔄 Use ARM runner** - If your build is architecture-agnostic:
+   - Change to `windows-11-arm` (4-core)
+   - Verify all dependencies work on ARM64
+
+3. **🔍 Investigate bottlenecks:**
+   - Check if specific tools can be optimized
+   - Consider using faster alternatives
+   - Profile per step to find hot paths
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+'''
+            else:
+                section += f'''
+**Priority: Optimize Build ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+This runner is already at the maximum size in its family.
+
+**Options to address overutilization:**
+
+1. **Parallelize** - Use matrix strategy for independent jobs
+2. **Cache** - Improve dependency caching to reduce download time
+3. **Profile** - Identify and optimize slowest steps
+4. **Simplify** - Remove unnecessary dependencies and tools
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
     elif utilization['score'] < 30:
