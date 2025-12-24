@@ -285,6 +285,68 @@ def detect_idle_time(data):
         'idle_percentage': (total_idle / total_duration * 100) if total_duration > 0 else 0,
     }
 
+def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current_runner_type='ubuntu-latest'):
+    """Recommend a larger runner based on utilization, staying in same OS/arch family.
+    
+    Returns dict with:
+    - recommended_runner: key in GITHUB_RUNNERS
+    - reason: explanation
+    - estimated_speedup: rough time savings estimate
+    - cost_comparison: cost per run comparison
+    """
+    
+    # Map current runner to upgrade path (same OS, larger size)
+    upgrade_paths = {
+        # Linux upgrades
+        'ubuntu-latest': 'linux_4_core',
+        'ubuntu-24.04': 'linux_4_core',
+        'ubuntu-22.04': 'linux_4_core',
+        'ubuntu-20.04': 'linux_4_core',
+        'ubuntu-slim': 'linux_4_core',  # 1-core to 4-core is significant jump
+        
+        # Linux ARM upgrades
+        'linux_2_core_arm': 'linux_4_core_arm',
+        'linux_4_core_arm': 'linux_8_core_arm',
+        
+        # Windows upgrades
+        'windows-latest': 'windows_4_core',
+        'windows-2022': 'windows_4_core',
+        'windows-2019': 'windows_4_core',
+        
+        # Windows ARM upgrades
+        'windows_2_core_arm': 'windows_4_core_arm',
+        'windows_4_core_arm': 'windows_8_core_arm',
+        
+        # macOS upgrades
+        'macos-latest': 'macos_l',
+        'macos-14': 'macos_l',
+        'macos-13': 'macos_l',
+        'macos-12': 'macos_l',
+    }
+    
+    recommended = upgrade_paths.get(current_runner_type, 'linux_4_core')
+    recommended_specs = GITHUB_RUNNERS.get(recommended, {})
+    
+    # Find reason based on what maxed out
+    if max_cpu_pct >= 90 and max_mem_pct >= 90:
+        reason = f'Both CPU ({max_cpu_pct:.0f}%) and memory ({max_mem_pct:.0f}%) maxed - needs more resources'
+    elif max_cpu_pct >= 90:
+        reason = f'CPU maxed out at {max_cpu_pct:.0f}% - needs more compute cores'
+    elif max_mem_pct >= 90:
+        reason = f'Memory maxed out at {max_mem_pct:.0f}% - needs more RAM'
+    else:
+        reason = 'Resources constrained - recommend upgrade'
+    
+    return {
+        'recommended': recommended,
+        'cores': recommended_specs.get('vcpus', 4),
+        'ram_gb': recommended_specs.get('ram_gb', 16),
+        'reason': reason,
+        'speedup_estimate': '~2x faster' if recommended_specs.get('vcpus', 4) >= 4 else 'Similar speed, better stability',
+        'cost_per_min': recommended_specs.get('cost_per_min', 0.012),
+        'name': recommended_specs.get('name', 'larger runner'),
+    }
+
 def generate_utilization_section(data, analyzed_steps=None):
     """Generate the runner utilization and cost efficiency section."""
     utilization = calculate_utilization_score(data)
@@ -393,6 +455,26 @@ GitHub hosted runners are cost-effective when properly utilized:
     is_overutilized = (utilization['max_cpu_pct'] >= 90 or utilization['max_mem_pct'] >= 90)
     
     if is_overutilized:
+        # Get specific runner recommendation (respecting OS/architecture)
+        duration_sec = data.get('duration', 0)
+        current_runner = detect_runner_type(data)
+        
+        upgrade_rec = recommend_runner_upgrade(
+            utilization['max_cpu_pct'],
+            utilization['max_mem_pct'],
+            duration_sec,
+            current_runner_type=current_runner
+        )
+        
+        recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
+        current_cost_per_min = 0.006  # 2-core default
+        new_cost_per_min = upgrade_rec['cost_per_min']
+        duration_min = max(1, math.ceil(duration_sec / 60))
+        
+        current_run_cost = current_cost_per_min * duration_min
+        new_run_cost = new_cost_per_min * duration_min
+        cost_diff = new_run_cost - current_run_cost
+        
         section += f'''
 **Priority: Upgrade to Larger Runner ⚠️**
 
@@ -400,14 +482,32 @@ Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
-**Recommended Actions:**
-1. **Upgrade runner** - Larger instance will reduce execution time and improve reliability
-2. **Optimize code** - Profile and reduce computational complexity if possible
-3. **Monitor cost/time trade-off** - Faster runs may offset higher per-minute cost
+**Recommended Runner: {upgrade_rec['name']} ({upgrade_rec['cores']}-core, {upgrade_rec['ram_gb']}GB RAM)**
 
-**Compare runner options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+**Why:** {upgrade_rec['reason']}
 
-See right-sizing suggestions below for cost comparison.
+**Expected Benefit:** {upgrade_rec['speedup_estimate']}
+
+**Cost Impact (for this job):**
+- Current: ${current_run_cost:.4f}/run
+- Recommended: ${new_run_cost:.4f}/run
+- Difference: +${cost_diff:.4f}/run (or -{-cost_diff:.4f}/run if faster)
+
+**Estimated Monthly Cost** (10 runs/day):
+- Current: ${current_cost_per_min * duration_min * 10 * 30:.2f}
+- Recommended: ${new_cost_per_min * duration_min * 10 * 30:.2f}
+
+**How to Switch:**
+In your workflow, change:
+```yaml
+runs-on: {current_runner}
+```
+to:
+```yaml
+runs-on: {upgrade_rec['recommended']}
+```
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
     elif utilization['score'] < 30:
