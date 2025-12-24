@@ -548,12 +548,14 @@ GitHub hosted runners are cost-effective when properly utilized:
             if is_larger_upgrade:
                 plan_note = '\n\n**Note:** Larger runners require a **GitHub Team or GitHub Enterprise Cloud** plan. Not available on free tier.'
             
-            # Value messaging
+            # Value messaging - emphasize the speedup benefit
             if cost_diff < 0:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
                 upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
+            elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
+                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price. Much better value: same monthly cost but quicker feedback and faster CI/CD cycles.'
             elif speedup_factor > 1.5:
-                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Higher cost per minute, but less total time = often similar or better overall value.'
+                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is offset by time savings and improved developer productivity.'
             else:
                 upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
             
