@@ -126,10 +126,35 @@ def format_duration(seconds):
     else:
         return f"{seconds/3600:.1f}h"
 
-def get_utilization_grade(utilization_pct):
-    """Get utilization grade and recommendation."""
+def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
+    """Get utilization grade and recommendation.
+    
+    Scoring logic:
+    - A (90%+): Optimal utilization - job fits runner well
+    - B (70-89%): Good utilization - acceptable
+    - C (50-69%): Fair utilization - could optimize
+    - D (<50%): Poor utilization - significant wasted capacity
+    
+    Overutilization flags (when either CPU or memory peaks at 90%+):
+    - Job is too big for current runner → recommend upgrade
+    """
+    # Check for overutilization (job is too big for runner)
+    is_overutilized = False
+    if max_cpu_pct is not None and max_cpu_pct >= 90:
+        is_overutilized = True
+    if max_mem_pct is not None and max_mem_pct >= 90:
+        is_overutilized = True
+    
+    # If overutilized, recommend upgrade instead of praising utilization
+    if is_overutilized:
+        if utilization_pct >= 85:
+            return 'D', '🔴 Poor', 'Job exceeds runner capacity - consider upgrading to a larger runner'
+        else:
+            return 'C', '🟡 Fair', 'Job is straining resources - consider upgrading to a larger runner'
+    
+    # Normal utilization scoring (for jobs that fit the runner)
     if utilization_pct >= UTILIZATION_THRESHOLDS['excellent']:
-        return 'A', '🟢 Excellent', 'Runner is well-utilized'
+        return 'A', '🟢 Excellent', 'Runner is well-utilized for this workload'
     elif utilization_pct >= UTILIZATION_THRESHOLDS['good']:
         return 'B', '🟢 Good', 'Runner utilization is healthy'
     elif utilization_pct >= UTILIZATION_THRESHOLDS['fair']:
@@ -269,7 +294,11 @@ def generate_utilization_section(data, analyzed_steps=None):
     cost_analysis = calculate_cost_analysis(data, utilization, analyzed_steps)
     idle_analysis = detect_idle_time(data)
     
-    grade, grade_text, grade_desc = get_utilization_grade(utilization['score'])
+    grade, grade_text, grade_desc = get_utilization_grade(
+        utilization['score'],
+        max_cpu_pct=utilization['max_cpu_pct'],
+        max_mem_pct=utilization['max_mem_pct']
+    )
     
     score = utilization['score']
     filled = int(score / 5)
