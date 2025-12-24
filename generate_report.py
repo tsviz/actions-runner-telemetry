@@ -34,46 +34,60 @@ THRESHOLDS = {
 }
 
 # GitHub Hosted Runner Specifications with accurate pricing (Jan 1, 2026+)
-# https://docs.github.com/en/enterprise-cloud@latest/billing/concepts/product-billing/github-actions
+# https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing
+# 
+# Note: Specifications vary by plan and repository visibility:
+# - Free tier: Standard runners only (ubuntu-latest 2-core, windows-latest 2-core, macOS available)
+# - GitHub Team/Enterprise Cloud: Larger runners available (4-core, 8-core, etc.)
+# Larger runners are marked with 'is_larger': True flag.
 GITHUB_RUNNERS = {
-    # Standard Linux runners
-    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 5, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Linux 1-core (ubuntu-slim)', 'sku': 'linux'},
+    # Standard Linux runners (free tier, all repositories)
+    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 5, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Linux 1-core (ubuntu-slim)', 'sku': 'linux_slim'},
     'ubuntu-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-latest)', 'sku': 'linux'},
     'ubuntu-24.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-24.04)', 'sku': 'linux'},
     'ubuntu-22.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-22.04)', 'sku': 'linux'},
     
-    # Standard Linux ARM runners
-    'ubuntu-24.04-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core (ubuntu-24.04-arm)', 'sku': 'linux_arm'},
-    'ubuntu-22.04-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core (ubuntu-22.04-arm)', 'sku': 'linux_arm'},
+    # Larger Linux x64 runners (GitHub Team/Enterprise Cloud)
+    'linux-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 14, 'name': 'Linux 4-core Larger Runner', 'sku': 'linux_4_core', 'is_larger': True},
+    'linux-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Linux 8-core Larger Runner', 'sku': 'linux_8_core', 'is_larger': True},
     
-    # Standard Windows runners
+    # Larger Linux ARM64 runners (GitHub Team/Enterprise Cloud)
+    'linux-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core Larger Runner', 'sku': 'linux_4_core_arm', 'is_larger': True},
+    'linux-8-core-arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Linux ARM 8-core Larger Runner', 'sku': 'linux_8_core_arm', 'is_larger': True},
+    
+    # Standard Windows runners (free tier, all repositories)
     'windows-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-latest)', 'sku': 'windows'},
     'windows-2025': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-2025)', 'sku': 'windows'},
     'windows-2022': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-2022)', 'sku': 'windows'},
     
-    # Standard Windows ARM runners
-    'windows-11-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Windows ARM 4-core (windows-11-arm)', 'sku': 'windows_arm'},
+    # Larger Windows x64 runners (GitHub Team/Enterprise Cloud)
+    'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Windows 4-core Larger Runner', 'sku': 'windows_4_core', 'is_larger': True},
+    'windows-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 14, 'name': 'Windows 8-core Larger Runner', 'sku': 'windows_8_core', 'is_larger': True},
     
-    # Standard macOS Intel runners
-    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-13)', 'sku': 'macos_intel'},
-    'macos-15-intel': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-15-intel)', 'sku': 'macos_intel'},
+    # Larger Windows ARM64 runners (GitHub Team/Enterprise Cloud)
+    'windows-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Windows ARM 4-core Larger Runner', 'sku': 'windows_4_core_arm', 'is_larger': True},
+    'windows-8-core-arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.026, 'storage_gb': 14, 'name': 'Windows ARM 8-core Larger Runner', 'sku': 'windows_8_core_arm', 'is_larger': True},
     
-    # Standard macOS Apple Silicon (M1) runners
-    'macos-latest': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-latest)', 'sku': 'macos_arm'},
-    'macos-14': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-14)', 'sku': 'macos_arm'},
-    'macos-15': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-15)', 'sku': 'macos_arm'},
+    # Standard macOS Intel runners (free tier, all repositories)
+    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-13)', 'sku': 'macos'},
+    'macos-15-intel': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-15-intel)', 'sku': 'macos'},
     
-    # Larger macOS Intel runners
-    'macos-13-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.096, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-13-large)', 'sku': 'macos_l'},
-    'macos-14-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.096, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-14-large)', 'sku': 'macos_l'},
-    'macos-15-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.096, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-15-large)', 'sku': 'macos_l'},
-    'macos-latest-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.096, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-latest-large)', 'sku': 'macos_l'},
+    # Standard macOS Apple Silicon (M1) runners (free tier, all repositories)
+    'macos-latest': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-latest)', 'sku': 'macos'},
+    'macos-14': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-14)', 'sku': 'macos'},
+    'macos-15': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-15)', 'sku': 'macos'},
     
-    # Larger macOS Apple Silicon (M2) XLarge runners with GPU
-    'macos-13-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-13-xlarge)', 'sku': 'macos_xl'},
-    'macos-14-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-14-xlarge)', 'sku': 'macos_xl'},
-    'macos-15-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-15-xlarge)', 'sku': 'macos_xl'},
-    'macos-latest-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-latest-xlarge)', 'sku': 'macos_xl'},
+    # Larger macOS Intel runners (GitHub Team/Enterprise Cloud)
+    'macos-13-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-13-large)', 'sku': 'macos_l', 'is_larger': True},
+    'macos-14-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-14-large)', 'sku': 'macos_l', 'is_larger': True},
+    'macos-15-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-15-large)', 'sku': 'macos_l', 'is_larger': True},
+    'macos-latest-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-latest-large)', 'sku': 'macos_l', 'is_larger': True},
+    
+    # Larger macOS Apple Silicon (M2) XLarge runners (GitHub Team/Enterprise Cloud)
+    'macos-13-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-13-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
+    'macos-14-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-14-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
+    'macos-15-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-15-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
+    'macos-latest-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-latest-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
 }
 
 # Utilization thresholds for scoring
@@ -283,25 +297,36 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     """
     
     # Map current runner to upgrade path (same OS, larger size when available)
-    # Note: GitHub's standard runners have limited larger options
+    # Note: GitHub's runner availability varies by plan:
+    # - Free tier (standard): Ubuntu max 2 cores, Windows max 2 cores
+    # - GitHub Team/Enterprise Cloud: Larger runners available (4-core, 8-core, etc.)
     upgrade_paths = {
         # Linux upgrades
-        'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core upgrade (both x64)
-        'ubuntu-latest': 'ubuntu-latest',  # No larger x64 Linux available (see notes below)
-        'ubuntu-24.04': 'ubuntu-24.04',   # No larger x64 Linux available
-        'ubuntu-22.04': 'ubuntu-22.04',   # No larger x64 Linux available
+        'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core (always available)
+        'ubuntu-latest': 'linux-4-core',  # 2-core to 4-core (requires GitHub Team+)
+        'ubuntu-24.04': 'linux-4-core',   # 2-core to 4-core (requires GitHub Team+)
+        'ubuntu-22.04': 'linux-4-core',   # 2-core to 4-core (requires GitHub Team+)
         
-        # Linux ARM upgrades (4-core is max for standard)
-        'ubuntu-24.04-arm': 'ubuntu-24.04-arm',  # Already max for standard
-        'ubuntu-22.04-arm': 'ubuntu-22.04-arm',  # Already max for standard
+        # Larger Linux x64 upgrades
+        'linux-4-core': 'linux-8-core',
+        'linux-8-core': 'linux-8-core',  # Max standard larger runner
         
-        # Windows upgrades (no larger runners available)
-        'windows-latest': 'windows-latest',  # No larger option
-        'windows-2025': 'windows-2025',
-        'windows-2022': 'windows-2022',
+        # Larger Linux ARM upgrades
+        'linux-4-core-arm': 'linux-8-core-arm',
+        'linux-8-core-arm': 'linux-8-core-arm',
         
-        # Windows ARM upgrades (4-core is max for standard)
-        'windows-11-arm': 'windows-11-arm',  # Already max for standard
+        # Windows upgrades
+        'windows-latest': 'windows-4-core',  # 2-core to 4-core (requires GitHub Team+)
+        'windows-2025': 'windows-4-core',    # 2-core to 4-core (requires GitHub Team+)
+        'windows-2022': 'windows-4-core',    # 2-core to 4-core (requires GitHub Team+)
+        
+        # Larger Windows x64 upgrades
+        'windows-4-core': 'windows-8-core',
+        'windows-8-core': 'windows-8-core',  # Max standard larger runner
+        
+        # Larger Windows ARM upgrades
+        'windows-4-core-arm': 'windows-8-core-arm',
+        'windows-8-core-arm': 'windows-8-core-arm',
         
         # macOS Intel upgrades
         'macos-13': 'macos-13-large',
@@ -517,6 +542,12 @@ GitHub hosted runners are cost-effective when properly utilized:
             new_monthly = new_cost_per_min * estimated_new_duration_min * 10 * 30
             monthly_diff = new_monthly - current_monthly
             
+            # Determine if this is a larger runner upgrade (requires GitHub Team+)
+            is_larger_upgrade = recommended_runner.get('is_larger', False)
+            plan_note = ''
+            if is_larger_upgrade:
+                plan_note = '\n\n**Note:** Larger runners require a **GitHub Team or GitHub Enterprise Cloud** plan. Not available on free tier.'
+            
             # Value messaging
             if cost_diff < 0:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
@@ -549,7 +580,7 @@ Your job is **straining resources** on the current runner:
 - Recommended: ${new_monthly:.2f}
 - **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
 
-{upgrade_note}
+{upgrade_note}{plan_note}
 
 **How to Switch:**
 In your workflow, change:
@@ -568,67 +599,88 @@ runs-on: {upgrade_rec['recommended']}
             # No upgrade available - show optimization strategies
             if current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
                 section += f'''
-**Priority: Optimize Build (No Larger x64 Runner Available) ⚠️**
+**Priority: Optimize Build (or Upgrade to Larger Runner) ⚠️**
 
 Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
-**Limitation:** GitHub's standard Linux x64 runners max out at 2 cores.
+**Limitation:** GitHub's **free tier** standard Linux runners max out at **2 cores** (`ubuntu-latest`, `ubuntu-24.04`, `ubuntu-22.04`).
 
-**Options to address overutilization:**
+**Option 1: Optimize your build first** (recommended, free tier-friendly) - Most cost-effective solution:
 
-1. **🔧 Optimize the build** - This is the most cost-effective approach:
-   - Parallelize jobs using matrix strategy
-   - Improve dependency caching (npm, pip, apt, etc.)
-   - Remove unnecessary dependencies
-   - Profile slow steps and optimize hot paths
+1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix:
+   ```yaml
+   strategy:
+     matrix:
+       node-version: [18, 20, 22]
+   ```
 
-2. **🔄 Use ARM runner** - If your build is architecture-agnostic:
-   - Change to `ubuntu-24.04-arm` (4-core, same cost/min)
-   - Verify all dependencies work on ARM64
-   - Usually 10-20% faster due to more cores
+2. **Improve caching** - Cache dependencies to reduce install time:
+   - npm: Use `actions/setup-node@v4` with `cache: npm`
+   - pip: Use `actions/setup-python@v4` with `cache: pip`
+   - apt: Pre-build custom Docker images with dependencies
 
-3. **🍎 Try macOS runners** - If compatible:
-   - `macos-latest-xlarge`: 5-core M2 Apple Silicon (~13x cost, same speed)
-   - `macos-13-large`: 12-core Intel (~16x cost, much faster)
+3. **Remove unnecessary dependencies** - Audit and eliminate unused packages
 
-4. **🔍 Investigate bottlenecks:**
-   - Check if specific tools can be optimized
-   - Profile CPU and memory usage per step
-   - Consider using faster alternatives
+4. **Optimize slow steps** - Profile per-step execution:
+   - Identify bottleneck steps with `time` command
+   - Use faster alternatives (e.g., `esbuild` vs Webpack, `swc` vs Babel)
 
-**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+5. **Run targeted tests** - Only run tests for changed modules, not full suite
+
+**Option 2: Upgrade to a Larger Runner** (if optimization isn't enough):
+
+If you have a **GitHub Team or GitHub Enterprise Cloud** plan, you can use larger runners:
+- **linux-4-core** - 4-core runner at $0.012/min (2x faster, $0.006 more per minute)
+- **linux-8-core** - 8-core runner at $0.022/min (4x faster, faster feedback)
+
+See [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing) for complete options.
+
+**Summary:**
+- Start with optimization (builds faster, lower cost)
+- If optimization hits a wall, consider larger runners (GitHub Team+ plans)
 
 '''
             elif current_runner in ['windows-latest', 'windows-2025', 'windows-2022']:
                 section += f'''
-**Priority: Optimize Build (No Larger x64 Runner Available) ⚠️**
+**Priority: Optimize Build (or Upgrade to Larger Runner) ⚠️**
 
 Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
-**Limitation:** GitHub's standard Windows x64 runners max out at 2 cores.
+**Limitation:** GitHub's **free tier** standard Windows runners max out at **2 cores** (`windows-latest`, `windows-2025`, `windows-2022`).
 
-**Options to address overutilization:**
+**Option 1: Optimize your build first** (recommended, free tier-friendly) - Most cost-effective solution:
 
-1. **🔧 Optimize the build** - This is the most cost-effective approach:
-   - Parallelize jobs using matrix strategy
-   - Improve dependency caching (NuGet, npm, etc.)
-   - Remove unnecessary dependencies
-   - Profile slow steps and optimize
+1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix
 
-2. **🔄 Use ARM runner** - If your build is architecture-agnostic:
-   - Change to `windows-11-arm` (4-core)
-   - Verify all dependencies work on ARM64
+2. **Improve caching** - Cache dependencies to reduce install time:
+   - NuGet: Enable project-level caching
+   - npm/yarn: Cache node_modules or use lock files
+   - Pre-warm build artifacts for incremental builds
 
-3. **🔍 Investigate bottlenecks:**
-   - Check if specific tools can be optimized
-   - Consider using faster alternatives
-   - Profile per step to find hot paths
+3. **Remove unnecessary dependencies** - Audit and eliminate unused NuGet packages
 
-**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+4. **Optimize slow steps** - Profile build per-step:
+   - Enable parallel compilation flags (`/m` for MSBuild)
+   - Use incremental builds where possible
+   - Identify and optimize slowest test suites
+
+5. **Run targeted tests** - Only run tests for changed code, not full suite
+
+**Option 2: Upgrade to a Larger Runner** (if optimization isn't enough):
+
+If you have a **GitHub Team or GitHub Enterprise Cloud** plan, you can use larger runners:
+- **windows-4-core** - 4-core runner at $0.022/min (2x faster)
+- **windows-8-core** - 8-core runner at $0.042/min (4x faster)
+
+See [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing) for complete options.
+
+**Summary:**
+- Start with optimization (builds faster, lower cost, free tier-friendly)
+- If optimization hits a wall, consider larger runners (GitHub Team+ plans)
 
 '''
             else:
