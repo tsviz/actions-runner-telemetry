@@ -180,9 +180,9 @@ def generate_steps_section(data):
     # Create Gantt timeline
     gantt = create_mermaid_gantt("Step Timeline", analyzed_steps, duration)
     
-    # Create pie chart for CPU distribution
-    cpu_data = {s['name'][:15]: s['avg_cpu'] * s['duration'] for s in analyzed_steps if s['avg_cpu'] > 0}
-    cpu_pie = create_mermaid_pie_chart("CPU Time Distribution", cpu_data) if cpu_data else ""
+    # Create pie chart for CPU distribution - show avg CPU per step (more intuitive)
+    cpu_data = {s['name'][:15]: s['avg_cpu'] for s in analyzed_steps if s['avg_cpu'] > 0}
+    cpu_pie = create_mermaid_pie_chart("Avg CPU % by Step", cpu_data) if cpu_data else ""
     
     section = f'''
 ---
