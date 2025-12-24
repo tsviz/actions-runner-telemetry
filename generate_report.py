@@ -304,9 +304,10 @@ def generate_report(data):
     
     # Mermaid XY chart for CPU/Memory over time
     # Create combined chart with a visual legend header
+    # Note: Mermaid xychart-beta uses blue for line 1, green for line 2
     xy_chart = ""
     if len(x_labels) >= 2:
-        xy_chart = f'''| 🔵 CPU % | 🟠 Memory % |
+        xy_chart = f'''| 🔵 CPU % | 🟢 Memory % |
 |:--------:|:-----------:|
 | Peak: {max_cpu:.1f}% / Avg: {avg_cpu:.1f}% | Peak: {max_mem:.1f}% / Avg: {avg_mem:.1f}% |
 
