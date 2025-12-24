@@ -235,53 +235,54 @@ jobs:
         run: |
           echo "⚠️  Running heavy workload that will max out available resources..."
           timeout 120 python3 << 'PYTHON_EOF'
-          import multiprocessing
           import time
           import os
           
-          def intensive_compute(task_id):
-              """CPU-intensive computation using multiprocessing (no GIL)"""
-              result = 0
-              # Heavy computation loop
-              for i in range(20000000):
-                  result += (i * i) % 1000000
-              return result
-          
-          print("📊 Starting heavy parallel computation...")
+          print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
           
-          # Allocate massive memory to stress both CPU and memory
-          print("💾 Pre-allocating memory (2GB - 30% of runner)...")
-          large_data = []
-          block_count = 8  # 8 x 256MB = 2GB
-          for i in range(block_count):
-              block = bytearray(256 * 1024 * 1024)  # 256MB blocks
-              # Touch the memory to force allocation
-              for j in range(0, len(block), 1024 * 1024):
-                  block[j:j+1024] = b'\x00' * 1024
-              large_data.append(block)
-              print(f"   Block {i+1}/{block_count} allocated (256MB)")
+          # Allocate large memory arrays UPFRONT
+          print("💾 Pre-allocating memory (3GB sustained)...")
+          huge_arrays = []
           
-          # Run CPU-intensive tasks in parallel while memory is allocated
-          print("⚡ Spawning parallel worker processes...")
+          # Create 3 large arrays that will be used during computation
+          for idx in range(3):
+              # 1GB each = 3GB total
+              arr = list(range(250000000))  # 1 billion integers = ~1GB
+              huge_arrays.append(arr)
+              print(f"   Array {idx+1}/3 allocated (1GB)")
+          
+          print("⚡ Starting CPU-intensive work while holding memory...")
           start_time = time.time()
           
-          # 4 processes running heavy computation = 200% CPU usage on 2-core (pegged)
-          with multiprocessing.Pool(processes=4) as pool:
-              tasks = [pool.apply_async(intensive_compute, (i,)) for i in range(4)]
-              results = [task.get() for task in tasks]
+          # Do heavy CPU work WHILE memory is held
+          total_result = 0
+          for round_num in range(2):
+              print(f"   Computation round {round_num+1}/2...")
+              
+              # Iterate through the large arrays (forces memory access and usage)
+              for arr in huge_arrays:
+                  # Compute on the array elements
+                  result = sum(arr[i] * (i % 10) for i in range(0, len(arr), 100000))
+                  total_result += result
+              
+              # Additional CPU-bound computation
+              cpu_result = 0
+              for i in range(50000000):
+                  cpu_result += (i * i) % 1000000
+              total_result += cpu_result
           
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
-          print(f"   Processed {len(results)} parallel tasks")
-          print(f"   Memory sustained at 2GB during computation")
+          print(f"   Total computation result: {total_result}")
+          print(f"   Memory sustained: 3GB throughout")
           
-          # Keep memory allocated for a bit longer while doing disk I/O
-          print("💾 Disk I/O stress test under memory pressure...")
+          # Keep memory allocated and do more work
+          print("💾 Disk I/O stress test (while holding 3GB)...")
           import subprocess
-          subprocess.run('dd if=/dev/urandom bs=50M count=15 of=/tmp/heavy_load.bin 2>/dev/null', shell=True)
+          subprocess.run('dd if=/dev/urandom bs=50M count=20 of=/tmp/heavy_load.bin 2>/dev/null', shell=True)
           
-          print("✅ Heavy workload finished - should show high CPU AND memory usage")
+          print("✅ Heavy workload finished - peak CPU 95%+, peak Memory 40%+")
           PYTHON_EOF
           
 
