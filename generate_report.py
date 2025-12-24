@@ -627,14 +627,25 @@ def generate_report(data):
         "Available": 100 - avg_mem,
     })
     
-    # Create time series chart
+    # Create time series chart with every 6-second interval for clean labels
     sample_count = len(samples)
-    step_size = max(1, sample_count // 12)
-    sampled_indices = range(0, sample_count, step_size)
+    interval = data.get("interval", 2)
     
-    x_labels = [f'"{i*data.get("interval", 2)}s"' for i in sampled_indices]
-    sampled_cpu = [cpu_values[i] for i in sampled_indices]
-    sampled_mem = [mem_values[i] for i in sampled_indices]
+    # Calculate indices for every 6 seconds (or skip if interval is different)
+    label_interval_seconds = 6
+    label_step = max(1, label_interval_seconds // interval)
+    
+    # Build label indices starting from 0 and going to end
+    label_indices = list(range(0, sample_count, label_step))
+    if label_indices[-1] != sample_count - 1:
+        label_indices.append(sample_count - 1)
+    
+    # Generate labels for every 6-second point
+    x_labels = [f'"{int(i * interval)}"' for i in label_indices]
+    
+    # All data points for smooth lines
+    all_cpu_str = ", ".join([f"{v:.1f}" for v in cpu_values])
+    all_mem_str = ", ".join([f"{v:.1f}" for v in mem_values])
     
     xy_chart = ""
     if len(x_labels) >= 2:
@@ -645,10 +656,10 @@ def generate_report(data):
 ```mermaid
 xychart-beta
     title "CPU & Memory Usage Over Time"
-    x-axis "Time" [{", ".join(x_labels)}]
+    x-axis "Time (seconds)" [{", ".join(x_labels)}]
     y-axis "Usage %" 0 --> 100
-    line [{", ".join([f"{v:.1f}" for v in sampled_cpu])}]
-    line [{", ".join([f"{v:.1f}" for v in sampled_mem])}]
+    line [{all_cpu_str}]
+    line [{all_mem_str}]
 ```
 
 '''
