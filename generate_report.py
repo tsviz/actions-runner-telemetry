@@ -33,49 +33,63 @@ THRESHOLDS = {
     'steal_critical': 15,
 }
 
-# GitHub Hosted Runner Specifications with 2026 Pricing
-# https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions
+# GitHub Hosted Runner Specifications with accurate pricing
+# https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing
 GITHUB_RUNNERS = {
     # Standard runners
-    'ubuntu-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 2-core'},
-    'ubuntu-24.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 24.04'},
-    'ubuntu-22.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 22.04'},
-    'ubuntu-20.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 20.04'},
-    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 3, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Ubuntu 1-core'},
+    'ubuntu-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core'},
+    'ubuntu-24.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core'},
+    'ubuntu-22.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core'},
+    'ubuntu-20.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core'},
+    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 3, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Linux 1-core'},
     'windows-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core'},
-    'windows-2022': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2022'},
-    'windows-2019': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2019'},
+    'windows-2022': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core'},
+    'windows-2019': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core'},
     'macos-latest': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 3-core'},
-    'macos-14': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 14'},
-    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 13'},
-    'macos-12': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 12'},
+    'macos-14': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 3-core'},
+    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 3-core'},
+    'macos-12': {'vcpus': 3, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 3-core'},
     
-    # x64 Larger runners
-    'ubuntu-latest-2-cores': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Ubuntu 2-core'},
-    'ubuntu-latest-4-cores': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 150, 'name': 'Ubuntu 4-core'},
-    'ubuntu-latest-8-cores': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 300, 'name': 'Ubuntu 8-core'},
-    'ubuntu-latest-16-cores': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.042, 'storage_gb': 600, 'name': 'Ubuntu 16-core'},
-    'ubuntu-latest-32-cores': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.082, 'storage_gb': 1200, 'name': 'Ubuntu 32-core'},
-    'ubuntu-latest-64-cores': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.162, 'storage_gb': 2040, 'name': 'Ubuntu 64-core'},
-    'ubuntu-latest-96-cores': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.252, 'storage_gb': 3060, 'name': 'Ubuntu 96-core'},
+    # x64 Larger runners (Linux)
+    'linux_2_core_advanced': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux Advanced 2-core'},
+    'linux_4_core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 150, 'name': 'Linux 4-core'},
+    'linux_8_core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 300, 'name': 'Linux 8-core'},
+    'linux_16_core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.042, 'storage_gb': 600, 'name': 'Linux 16-core'},
+    'linux_32_core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.082, 'storage_gb': 1200, 'name': 'Linux 32-core'},
+    'linux_64_core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.162, 'storage_gb': 2040, 'name': 'Linux 64-core'},
+    'linux_96_core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.252, 'storage_gb': 3060, 'name': 'Linux 96-core'},
     
-    'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 150, 'name': 'Windows 4-core'},
-    'windows-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 300, 'name': 'Windows 8-core'},
-    'windows-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.082, 'storage_gb': 600, 'name': 'Windows 16-core'},
-    'windows-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.162, 'storage_gb': 1200, 'name': 'Windows 32-core'},
-    'windows-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.322, 'storage_gb': 2040, 'name': 'Windows 64-core'},
-    'windows-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.552, 'storage_gb': 3060, 'name': 'Windows 96-core'},
+    # x64 Larger runners (Windows)
+    'windows_4_core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 150, 'name': 'Windows 4-core'},
+    'windows_8_core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 300, 'name': 'Windows 8-core'},
+    'windows_16_core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.082, 'storage_gb': 600, 'name': 'Windows 16-core'},
+    'windows_32_core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.162, 'storage_gb': 1200, 'name': 'Windows 32-core'},
+    'windows_64_core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.322, 'storage_gb': 2040, 'name': 'Windows 64-core'},
+    'windows_96_core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.552, 'storage_gb': 3060, 'name': 'Windows 96-core'},
     
-    'macos-l': {'vcpus': 12, 'ram_gb': 28, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core'},
-    'macos-xl': {'vcpus': 5, 'ram_gb': 32, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS M2 Pro'},
+    # macOS Larger runners
+    'macos_l': {'vcpus': 12, 'ram_gb': 28, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core'},
+    'macos_xl': {'vcpus': 5, 'ram_gb': 32, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS M2 Pro (5-core)'},
     
-    # ARM runners
-    'ubuntu-latest-arm-2-cores': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.005, 'storage_gb': 14, 'name': 'Ubuntu ARM 2-core'},
-    'ubuntu-latest-arm-4-cores': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 150, 'name': 'Ubuntu ARM 4-core'},
-    'ubuntu-latest-arm-8-cores': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 300, 'name': 'Ubuntu ARM 8-core'},
-    'ubuntu-latest-arm-16-cores': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.026, 'storage_gb': 600, 'name': 'Ubuntu ARM 16-core'},
-    'ubuntu-latest-arm-32-cores': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.050, 'storage_gb': 1200, 'name': 'Ubuntu ARM 32-core'},
-    'ubuntu-latest-arm-64-cores': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.098, 'storage_gb': 2040, 'name': 'Ubuntu ARM 64-core'},
+    # ARM64 Larger runners (Linux)
+    'linux_2_core_arm': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.005, 'storage_gb': 14, 'name': 'Linux ARM 2-core'},
+    'linux_4_core_arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 150, 'name': 'Linux ARM 4-core'},
+    'linux_8_core_arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 300, 'name': 'Linux ARM 8-core'},
+    'linux_16_core_arm': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.026, 'storage_gb': 600, 'name': 'Linux ARM 16-core'},
+    'linux_32_core_arm': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.050, 'storage_gb': 1200, 'name': 'Linux ARM 32-core'},
+    'linux_64_core_arm': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.098, 'storage_gb': 2040, 'name': 'Linux ARM 64-core'},
+    
+    # ARM64 Larger runners (Windows)
+    'windows_2_core_arm': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Windows ARM 2-core'},
+    'windows_4_core_arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.014, 'storage_gb': 150, 'name': 'Windows ARM 4-core'},
+    'windows_8_core_arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.026, 'storage_gb': 300, 'name': 'Windows ARM 8-core'},
+    'windows_16_core_arm': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.050, 'storage_gb': 600, 'name': 'Windows ARM 16-core'},
+    'windows_32_core_arm': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.098, 'storage_gb': 1200, 'name': 'Windows ARM 32-core'},
+    'windows_64_core_arm': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.194, 'storage_gb': 2040, 'name': 'Windows ARM 64-core'},
+    
+    # GPU-powered larger runners
+    'linux_4_core_gpu': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.052, 'storage_gb': 150, 'name': 'Linux GPU 4-core'},
+    'windows_4_core_gpu': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.102, 'storage_gb': 150, 'name': 'Windows GPU 4-core'},
 }
 
 # Utilization thresholds for scoring
