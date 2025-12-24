@@ -234,7 +234,7 @@ jobs:
       - name: Heavy CPU & Memory Load
         run: |
           echo "⚠️  Running heavy workload that will max out available resources..."
-          python3 << 'PYTHON_EOF'
+          timeout 120 python3 << 'PYTHON_EOF'
           import multiprocessing
           import time
           import os
@@ -242,47 +242,40 @@ jobs:
           def intensive_compute(task_id):
               """CPU-intensive computation using multiprocessing (no GIL)"""
               result = 0
-              # Heavy computation loop - calculate prime-like operations
-              for i in range(50000000):
+              # Heavy computation loop
+              for i in range(20000000):
                   result += (i * i) % 1000000
-                  if i % (i if i > 0 else 1) == 0 and i > 100000:
-                      # Simulate additional work
-                      _ = sum([j * j for j in range(1000)])
               return result
           
-          print("📊 Starting heavy parallel computation with multiple processes...")
+          print("📊 Starting heavy parallel computation...")
           print(f"   CPU Count: {os.cpu_count()}")
           
-          # Force allocation of memory BEFORE computation
-          print("💾 Pre-allocating memory (600MB)...")
+          # Allocate significant memory
+          print("💾 Pre-allocating memory (300MB)...")
           large_data = []
-          for i in range(6):
-              # Allocate 100MB blocks
+          for i in range(3):
               block = bytearray(100 * 1024 * 1024)
               large_data.append(block)
-              print(f"   Block {i+1}/6 allocated (100MB)")
+              print(f"   Block {i+1}/3 allocated (100MB)")
           
-          # Run CPU-intensive tasks in parallel using multiprocessing
+          # Run CPU-intensive tasks in parallel
           print("⚡ Spawning parallel worker processes...")
           start_time = time.time()
           
-          # Use all available CPU cores for computation
-          with multiprocessing.Pool(processes=os.cpu_count()) as pool:
-              tasks = [pool.apply_async(intensive_compute, (i,)) for i in range(os.cpu_count() * 2)]
+          with multiprocessing.Pool(processes=4) as pool:
+              tasks = [pool.apply_async(intensive_compute, (i,)) for i in range(4)]
               results = [task.get() for task in tasks]
           
           elapsed = time.time() - start_time
-          print(f"✅ Heavy computation complete ({elapsed:.1f}s)")
+          print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Processed {len(results)} parallel tasks")
-          print(f"   Peak memory: ~600MB sustained")
           
-          # Final disk I/O under heavy memory load
-          print("💾 Disk I/O while under memory pressure...")
+          # Disk I/O under load
+          print("💾 Disk I/O stress test...")
           import subprocess
-          for i in range(2):
-              subprocess.run(f'dd if=/dev/urandom bs=50M count=20 of=/tmp/heavy_load_{i}.bin 2>/dev/null', shell=True)
+          subprocess.run('dd if=/dev/urandom bs=50M count=10 of=/tmp/heavy_load.bin 2>/dev/null', shell=True)
           
-          print("✅ All heavy workloads complete - runner should show high utilization")
+          print("✅ Heavy workload finished")
           PYTHON_EOF
           
 
