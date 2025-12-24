@@ -633,7 +633,7 @@ def generate_report(data):
     
     # Calculate indices for every 6 seconds (or skip if interval is different)
     label_interval_seconds = 6
-    label_step = max(1, label_interval_seconds // interval)
+    label_step = max(1, int(label_interval_seconds / interval))
     
     # Build label indices starting from 0 and going to end
     label_indices = list(range(0, sample_count, label_step))
