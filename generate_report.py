@@ -1134,8 +1134,33 @@ def main():
         print(f"Error: No data file found at {DATA_FILE}")
         sys.exit(1)
     
-    with open(DATA_FILE, 'r') as f:
-        data = json.load(f)
+    # Try to load JSON with robust error handling
+    data = None
+    try:
+        with open(DATA_FILE, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        # Try to recover by reading line by line and finding valid JSON
+        print(f"⚠️  Failed to read telemetry data, using partial data")
+        print(f"   Error: {e}")
+        try:
+            with open(DATA_FILE, 'r') as f:
+                content = f.read()
+                # Try to find and parse the last complete JSON object
+                for i in range(len(content) - 1, -1, -1):
+                    if content[i] == '}':
+                        try:
+                            data = json.loads(content[:i+1])
+                            print(f"✅ Recovered partial telemetry data")
+                            break
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as e2:
+            print(f"   Could not recover: {e2}")
+    
+    if data is None:
+        print("Error: Could not load telemetry data")
+        sys.exit(1)
     
     # Generate markdown report for step summary
     report = generate_report(data)
