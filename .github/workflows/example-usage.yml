@@ -237,46 +237,48 @@ jobs:
           timeout 60 python3 << 'PYTHON_EOF'
           import time
           import os
+          from multiprocessing import Pool
           
           print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
           
-          # Allocate moderate memory arrays
-          print("💾 Pre-allocating memory (1GB sustained)...")
+          # Allocate memory arrays
+          print("💾 Pre-allocating memory (1.5GB sustained)...")
           huge_arrays = []
           
-          # Create 2 large arrays 
-          for idx in range(2):
-              # 500MB each = 1GB total (~7% of available 15GB)
+          # Create 3 large arrays 
+          for idx in range(3):
+              # 500MB each = 1.5GB total (~10% of available 15GB)
               arr = list(range(125000000))  # 125M integers = ~500MB
               huge_arrays.append(arr)
-              print(f"   Array {idx+1}/2 allocated (~500MB)")
+              print(f"   Array {idx+1}/3 allocated (~500MB)")
           
-          print("⚡ Starting CPU-intensive work while holding memory...")
+          print("⚡ Starting intensive CPU work on all cores...")
           start_time = time.time()
           
-          # Do heavy CPU work WHILE memory is held
-          total_result = 0
-          for round_num in range(2):
-              print(f"   Computation round {round_num+1}/2...")
-              
-              # Iterate through the large arrays (forces memory access and usage)
-              for arr in huge_arrays:
-                  # Compute on the array elements
-                  result = sum(arr[i] * (i % 10) for i in range(0, len(arr), 50000))
-                  total_result += result
-              
-              # Additional CPU-bound computation
-              cpu_result = 0
-              for i in range(50000000):  # Increased to 50M iterations
-                  cpu_result += (i * i) % 1000000
-              total_result += cpu_result
+          # CPU-intensive function for multiprocessing
+          def cpu_intensive_work(task_id):
+              result = 0
+              # Heavy computation: 100M iterations per task
+              for i in range(100000000):
+                  result += (i * i * i) % 1000000
+              return result
+          
+          # Spawn processes on all CPU cores
+          with Pool(os.cpu_count()) as pool:
+              results = pool.map(cpu_intensive_work, range(os.cpu_count()))
+          
+          # Also compute on the memory arrays while holding them
+          print("💾 Computing on large arrays...")
+          total_result = sum(results)
+          for arr in huge_arrays:
+              result = sum(arr[i] * (i % 10) for i in range(0, len(arr), 50000))
+              total_result += result
           
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
-          print(f"   Total computation result: {total_result}")
-          print(f"   Memory sustained: ~1GB throughout")
-          print(f"✅ Heavy workload finished - demonstrates resource stress")
+          print(f"   Total result: {total_result}")
+          print(f"✅ Heavy workload finished - high CPU + sustained memory")
           PYTHON_EOF
           
 
