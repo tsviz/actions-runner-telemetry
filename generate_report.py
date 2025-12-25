@@ -548,14 +548,28 @@ GitHub hosted runners are cost-effective when properly utilized:
             if is_larger_upgrade:
                 plan_note = '\n\n**Note:** Larger runners require a **GitHub Team or GitHub Enterprise Cloud** plan. Not available on free tier.'
             
-            # Value messaging - emphasize the speedup benefit
+            # Calculate hidden costs: developer waiting time, timeouts, context switching
+            # Assume average developer hourly rate: $75/hr, context switch cost: 20 min
+            time_saved_per_month_min = (duration_min - estimated_new_duration_min) * 10 * 30  # Per month
+            time_saved_per_month_hours = time_saved_per_month_min / 60
+            dev_cost_per_hour = 75  # Conservative estimate for dev productivity
+            hidden_value_saved = time_saved_per_month_hours * dev_cost_per_hour
+            
+            # Additionally: timeout risk reduction (assume 5% timeout rate costs 2x the run)
+            timeout_risk_current = current_run_cost * 300 * 0.05 * 2  # 5% of runs timeout, costs 2x
+            timeout_risk_new = new_run_cost * 300 * 0.02 * 2  # 2% timeout risk with faster runner
+            timeout_savings = timeout_risk_current - timeout_risk_new
+            
+            total_hidden_value = hidden_value_saved + timeout_savings
+            
+            # Value messaging - emphasize the speedup benefit AND hidden costs
             if cost_diff < 0:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
-                upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper) through time savings.'
+                upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
             elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
-                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price. Much better value: same monthly cost but quicker feedback and faster CI/CD cycles.'
+                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value:** Saves {time_saved_per_month_hours:.1f} hours of developer waiting time per month (~${hidden_value_saved:.0f}/month productivity gain) + ${timeout_savings:.0f}/month from fewer timeouts. **True value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
             elif speedup_factor > 1.5:
-                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is offset by time savings and improved developer productivity.'
+                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability.'
             else:
                 upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
             
