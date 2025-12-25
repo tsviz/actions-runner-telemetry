@@ -1029,16 +1029,22 @@ xychart-beta
 
 ---
 
-## 🔄 Resource Distribution
+## 🔄 Average Resource Utilization
+
+This shows the average CPU and memory usage during your job:
 
 <table>
 <tr>
 <td width="50%">
 
+**CPU Usage** - Average across all cores
+
 {resource_pie}
 
 </td>
 <td width="50%">
+
+**Memory Usage** - Average RAM consumption
 
 {memory_pie}
 
