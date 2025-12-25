@@ -570,10 +570,12 @@ GitHub hosted runners are cost-effective when properly utilized:
                 current_timeout_rate = 0.05
                 new_timeout_rate = 0.01
             
-            # Cost of each timeout: runner cost + dev time to investigate and re-run (~15 min)
-            dev_time_per_timeout_hours = 15 / 60  # 15 minutes per timeout
-            dev_time_per_timeout_cost = dev_time_per_timeout_hours * dev_cost_per_hour
-            timeout_cost_current = current_run_cost + dev_time_per_timeout_cost  # ~$18.75 per timeout
+            # Cost of each timeout: runner cost + dev time to investigate and re-run
+            # Assumption: ~5 min average dev time per timeout (investigation + rerun)
+            dev_time_per_timeout_min = 5  # Minutes to investigate and rerun
+            dev_time_per_timeout_hours = dev_time_per_timeout_min / 60
+            dev_time_per_timeout_cost = dev_time_per_timeout_hours * dev_cost_per_hour  # ~$6.25 per timeout
+            timeout_cost_current = current_run_cost + dev_time_per_timeout_cost
             timeout_cost_new = new_run_cost + dev_time_per_timeout_cost
             
             # Monthly timeout costs (300 runs/month)
@@ -583,6 +585,9 @@ GitHub hosted runners are cost-effective when properly utilized:
             timeout_cost_monthly_new = timeouts_per_month_new * timeout_cost_new
             timeout_savings = timeout_cost_monthly_current - timeout_cost_monthly_new
             
+            # Show assumptions in message
+            timeout_assumptions = f'(Assuming {current_timeout_rate*100:.0f}% timeout rate at current utilization, ~{dev_time_per_timeout_min} min dev time per timeout)'
+            
             total_hidden_value = hidden_value_saved + timeout_savings
             
             # Value messaging - emphasize the speedup benefit AND hidden costs
@@ -590,9 +595,9 @@ GitHub hosted runners are cost-effective when properly utilized:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
                 upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
             elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
-                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value:** Saves {time_saved_per_month_hours:.1f} hours of developer waiting time per month (~${hidden_value_saved:.0f}/month productivity gain) + ${timeout_savings:.0f}/month from fewer timeouts ({current_timeout_rate*100:.0f}%→{new_timeout_rate*100:.0f}% failure rate). **True value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
+                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value Breakdown:**\n- Developer waiting time: {time_saved_per_month_hours:.1f} hours/month = **${hidden_value_saved:.0f}/month**\n- Fewer timeouts: {timeouts_per_month_current:.0f}→{timeouts_per_month_new:.0f} per month = **${timeout_savings:.0f}/month savings** {timeout_assumptions}\n\n**Total Hidden Value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
             elif speedup_factor > 1.5:
-                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability.'
+                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability {timeout_assumptions}.'
             else:
                 upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
             
