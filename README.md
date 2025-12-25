@@ -7,10 +7,15 @@ Collects detailed system and environment telemetry from the GitHub Actions runne
 - 📈 **Time-Series Graphs** - CPU, Memory, Load, and I/O metrics over time
 - 📊 **Real-time Gauges** - Circular gauges for CPU, Memory, and Disk usage
 - 🔥 **Load Heatmaps** - Visual load average indicators
-- 📉 **Process Charts** - Top processes by CPU and Memory usage
+- 📉 **Process Charts** - Top processes by CPU and Memory usage with descriptions
 - 📡 **I/O Metrics** - Disk read/write and Network RX/TX rates
 - 📋 **Statistics Cards** - Average, peak, and current values
 - 🎨 **SVG Visualizations** - Pure SVG charts (no external dependencies)
+- 🚀 **Runner Upgrade Recommendations** - Suggests larger runners (4-core, 8-core) when available on your GitHub plan
+- 💰 **Cost/Performance Analysis** - Shows actual cost savings or hidden value from faster execution
+- 📊 **Per-Step Resource Tracking** - Break down CPU and memory usage by workflow step
+- 🎯 **Health Grade** - Letter grade (A-D) based on resource utilization
+- 🔍 **Process Descriptions** - Explains what each monitored process does (Git, Node, Python, Docker, etc.)
 
 ## 📊 Visual Dashboard
 
@@ -27,26 +32,45 @@ The action generates a comprehensive visual dashboard in your workflow's **Summa
 
 ## 🚀 Usage
 
-### Basic Usage
+### Minimal Usage (Easiest Start)
 
-Start telemetry at the beginning, stop at the end to generate the report:
+Just add one step - telemetry runs automatically and generates a report:
 
 ```yaml
 steps:
   - uses: actions/checkout@v4
   
-  # Start monitoring
+  - name: Telemetry
+    uses: tsviz/actions-runner-telemetry@v1
+  
+  # Your build steps run here - telemetry monitors in background
+  - name: Build
+    run: npm run build
+  
+  - name: Test
+    run: npm test
+```
+
+That's it! The report is generated automatically at the end of your job.
+
+### Full Report with Explicit Control
+
+If you want explicit control over when the report is generated (e.g., to ensure it runs even if steps fail):
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  
   - name: Start Telemetry
     uses: tsviz/actions-runner-telemetry@v1
   
-  # Your build steps - telemetry runs in background
   - name: Build
     run: npm run build
   
   - name: Test
     run: npm test
   
-  # Stop and generate report (use if: always() to run even if steps fail)
+  # Explicitly stop and generate report (runs even if previous steps fail)
   - name: Stop Telemetry
     if: always()
     uses: tsviz/actions-runner-telemetry@v1
