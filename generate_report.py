@@ -1096,20 +1096,41 @@ xychart-beta
 
 '''
     
-    # Top processes
+    # Top processes with descriptions
+    process_descriptions = {
+        'actions-r': 'GitHub Actions Runner - coordinates job execution',
+        'Runner.Work': 'Executes your job steps (build, test, deploy commands)',
+        'Runner.Listener': 'Listens for new jobs from GitHub',
+        'Runner.List': 'Tracks and manages running processes',
+        'kswapd': 'Kernel swap daemon - if high, job ran out of RAM',
+        'node': 'Node.js process - likely npm/yarn operations',
+        'docker': 'Docker daemon - if using containers',
+        'git': 'Git operations - cloning, fetching, pushing',
+        'python': 'Python interpreter - running Python scripts',
+        'dotnet': '.NET runtime - running C# builds',
+    }
+    
     top_procs = final_snapshot.get('processes', initial.get('processes', {}))
     if top_procs.get('by_cpu'):
         report += '''
 <details>
 <summary>🔝 Top Processes</summary>
 
-| Process | CPU % | Memory % |
-|:--------|------:|---------:|
+| Process | CPU % | Memory % | What it does |
+|:--------|------:|--------:|:-------------|
 '''
         for p in top_procs.get('by_cpu', [])[:5]:
             cmd = p['command'].split('/')[-1].split()[0][:30]
-            report += f"| `{cmd}` | {p['cpu']:.1f}% | {p['mem']:.1f}% |\n"
-        report += '\n</details>\n'
+            # Find matching description
+            desc = ''
+            for key, val in process_descriptions.items():
+                if key in cmd.lower():
+                    desc = val
+                    break
+            if not desc:
+                desc = 'Process consuming resources'
+            report += f"| `{cmd}` | {p['cpu']:.1f}% | {p['mem']:.1f}% | {desc} |\n"
+        report += '\n**Note:** High CPU on `actions-r` and `Runner.Work` is normal. High `kswapd` indicates memory pressure.\n\n</details>\n'
     
     # Recommendations
     recommendations = []
