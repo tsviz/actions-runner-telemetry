@@ -555,10 +555,33 @@ GitHub hosted runners are cost-effective when properly utilized:
             dev_cost_per_hour = 75  # Conservative estimate for dev productivity
             hidden_value_saved = time_saved_per_month_hours * dev_cost_per_hour
             
-            # Additionally: timeout risk reduction (assume 5% timeout rate costs 2x the run)
-            timeout_risk_current = current_run_cost * 300 * 0.05 * 2  # 5% of runs timeout, costs 2x
-            timeout_risk_new = new_run_cost * 300 * 0.02 * 2  # 2% timeout risk with faster runner
-            timeout_savings = timeout_risk_current - timeout_risk_new
+            # Additionally: timeout risk reduction based on actual utilization
+            # High utilization (95%+) = high timeout risk (20%)
+            # Medium utilization (85-95%) = medium risk (10%)
+            # Lower utilization (70-85%) = lower risk (5%)
+            max_util = max(utilization['max_cpu_pct'], utilization['max_mem_pct'])
+            if max_util >= 95:
+                current_timeout_rate = 0.20  # 20% chance of timeout when straining resources
+                new_timeout_rate = 0.02      # Much safer with proper resources
+            elif max_util >= 85:
+                current_timeout_rate = 0.10
+                new_timeout_rate = 0.01
+            else:
+                current_timeout_rate = 0.05
+                new_timeout_rate = 0.01
+            
+            # Cost of each timeout: runner cost + dev time to investigate and re-run (~15 min)
+            dev_time_per_timeout_hours = 15 / 60  # 15 minutes per timeout
+            dev_time_per_timeout_cost = dev_time_per_timeout_hours * dev_cost_per_hour
+            timeout_cost_current = current_run_cost + dev_time_per_timeout_cost  # ~$18.75 per timeout
+            timeout_cost_new = new_run_cost + dev_time_per_timeout_cost
+            
+            # Monthly timeout costs (300 runs/month)
+            timeouts_per_month_current = 300 * current_timeout_rate
+            timeouts_per_month_new = 300 * new_timeout_rate
+            timeout_cost_monthly_current = timeouts_per_month_current * timeout_cost_current
+            timeout_cost_monthly_new = timeouts_per_month_new * timeout_cost_new
+            timeout_savings = timeout_cost_monthly_current - timeout_cost_monthly_new
             
             total_hidden_value = hidden_value_saved + timeout_savings
             
@@ -567,7 +590,7 @@ GitHub hosted runners are cost-effective when properly utilized:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
                 upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
             elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
-                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value:** Saves {time_saved_per_month_hours:.1f} hours of developer waiting time per month (~${hidden_value_saved:.0f}/month productivity gain) + ${timeout_savings:.0f}/month from fewer timeouts. **True value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
+                upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value:** Saves {time_saved_per_month_hours:.1f} hours of developer waiting time per month (~${hidden_value_saved:.0f}/month productivity gain) + ${timeout_savings:.0f}/month from fewer timeouts ({current_timeout_rate*100:.0f}%→{new_timeout_rate*100:.0f}% failure rate). **True value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
             elif speedup_factor > 1.5:
                 upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability.'
             else:
