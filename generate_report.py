@@ -1098,16 +1098,44 @@ xychart-beta
     
     # Top processes with descriptions
     process_descriptions = {
+        # GitHub Actions core
         'actions-r': 'GitHub Actions Runner - coordinates job execution',
         'Runner.Work': 'Executes your job steps (build, test, deploy commands)',
         'Runner.Listener': 'Listens for new jobs from GitHub',
         'Runner.List': 'Tracks and manages running processes',
-        'kswapd': 'Kernel swap daemon - if high, job ran out of RAM',
-        'node': 'Node.js process - likely npm/yarn operations',
+        
+        # Container & virtualization
         'docker': 'Docker daemon - if using containers',
-        'git': 'Git operations - cloning, fetching, pushing',
+        'containerd': 'Container runtime - Docker or Kubernetes operations',
+        
+        # Languages & runtimes
         'python': 'Python interpreter - running Python scripts',
-        'dotnet': '.NET runtime - running C# builds',
+        'node': 'Node.js runtime - npm/yarn builds or JS execution',
+        'ruby': 'Ruby interpreter - running Ruby/Rails apps',
+        'java': 'Java Virtual Machine - Maven/Gradle builds or Java apps',
+        'go': 'Go runtime - building Go applications',
+        'dotnet': '.NET runtime - running C# or F# builds',
+        'php': 'PHP interpreter - running PHP code',
+        
+        # Build tools & package managers
+        'gradle': 'Gradle build system - Java/Kotlin builds',
+        'maven': 'Maven - Java/Kotlin build and dependency management',
+        'npm': 'Node Package Manager - installing/running JS dependencies',
+        'pip': 'Python Package Manager - installing Python packages',
+        'gem': 'Ruby Package Manager - installing gems',
+        'cargo': 'Rust package manager and build system',
+        'gcc': 'GNU C Compiler - compiling C/C++ code',
+        'clang': 'Clang compiler - compiling C/C++ code',
+        'rustc': 'Rust compiler - compiling Rust code',
+        
+        # Version control & utilities
+        'git': 'Git operations - cloning, fetching, pushing code',
+        'curl': 'Transfer data utility - downloading files/APIs',
+        'tar': 'Archive tool - extracting/compressing files',
+        'jq': 'JSON processor - parsing/transforming JSON data',
+        
+        # System
+        'kswapd': 'Kernel swap daemon - if high, job ran out of RAM',
     }
     
     top_procs = final_snapshot.get('processes', initial.get('processes', {}))
