@@ -22,7 +22,7 @@ echo "enabled=true" >> "$GITHUB_OUTPUT"
 
 case "$MODE" in
   auto|start)
-    # Auto mode: Start collection, report generates automatically via post-entrypoint
+    # Start mode: Initialize telemetry data collection
     echo "::group::📊 Starting Telemetry Collection"
     
     # Print initial system info
@@ -33,26 +33,18 @@ case "$MODE" in
     echo "  Arch: $(uname -m)"
     echo "  CPUs: $(nproc)"
     echo "  Memory: $(free -h | awk '/^Mem:/ {print $2}')"
-    echo "  Interval: ${INTERVAL}s"
     echo ""
     
-    # Start collector in background
-    echo "Starting background telemetry collector..."
-    nohup env TELEMETRY_DATA_FILE="$TELEMETRY_DATA_FILE" TELEMETRY_INTERVAL="$TELEMETRY_INTERVAL" python3 /telemetry_collector.py start > "$GITHUB_WORKSPACE/.telemetry_collector.log" 2>&1 &
-    COLLECTOR_PID=$!
-    echo "$COLLECTOR_PID" > "$GITHUB_WORKSPACE/.telemetry_collector.pid"
+    # Initialize telemetry data file
+    echo "Initializing telemetry collection..."
+    python3 /telemetry_collector.py start
     
-    echo "✅ Telemetry collector started (PID: $COLLECTOR_PID)"
+    echo "✅ Telemetry initialized"
     echo "   Data file: $TELEMETRY_DATA_FILE"
     echo ""
-    # Wait a moment for collector to initialize and write first sample
-    sleep 1
-    
-    if [ "$MODE" = "auto" ]; then
-      echo "ℹ️  Report will be generated automatically at job completion"
-    fi
-    echo "ℹ️  Use mode: 'step' with 'step-name' to track per-step resources (optional)"
-    
+    echo "ℹ️  Use mode: 'step' with 'step-name' to mark major work sections"
+    echo "ℹ️  Resources are sampled at each marked step for detailed analysis"
+    echo ""
     echo "::endgroup::"
     ;;
   
@@ -73,22 +65,13 @@ case "$MODE" in
     TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE:-/github/workspace}/.telemetry_data.json"
     export TELEMETRY_DATA_FILE
     
-    # Stop the collector if running (check in workspace volume for portability)
-    if [ -f "$GITHUB_WORKSPACE/.telemetry_collector.pid" ]; then
-      COLLECTOR_PID=$(cat "$GITHUB_WORKSPACE/.telemetry_collector.pid")
-      echo "Stopping collector (PID: $COLLECTOR_PID from workspace)..."
-      # Note: Process may not exist in this container (different instance)
-      # But we can still finalize the data
-      kill "$COLLECTOR_PID" 2>/dev/null || true
-      sleep 1
-    fi
-    
-    # Finalize data
+    # Finalize telemetry collection (no background process to stop)
+    echo "Finalizing telemetry data..."
     python3 /telemetry_collector.py stop
     
     # Generate report
     echo ""
-    echo "Generating visual report..."
+    echo "Generating analysis report..."
     python3 /generate_report.py
     
     echo "::endgroup::"

@@ -98,7 +98,7 @@ All reports include:
 
 ## Quick Start
 
-Add one step to any workflow:
+Add one step to start and one to stop. Mark major work sections for detailed breakdown:
 
 ```yaml
 jobs:
@@ -107,17 +107,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Monitor Runner
+      - name: Start Telemetry
         uses: tsviz/actions-runner-telemetry@v1
+      
+      - name: Install Dependencies
+        run: npm install
+      
+      - name: Mark Build Step
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Build"
       
       - name: Build
         run: npm run build
       
+      - name: Mark Test Step
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Test"
+      
       - name: Test
         run: npm test
+      
+      - name: Stop Telemetry & Generate Report
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
 ```
 
-Done. The report appears in your workflow summary when the job finishes.
+The report appears in your workflow summary when the job finishes. Each step marker captures resources at that point.
 
 ## Real-World Usage
 
@@ -131,23 +152,26 @@ Done. The report appears in your workflow summary when the job finishes.
 → Check peak memory usage. If it's near 90%, you probably need more RAM.
 
 **"Which build step is the bottleneck?"**  
-→ Use per-step tracking to see CPU/memory per step.
+→ Use step markers (mode: step) to see resource usage per section.
 
 ## Installation
 
-### Minimal (Recommended)
+### Minimal (Start → Work → Stop)
 
-Add telemetry to your workflow and it handles the rest:
+Add start and stop steps, with optional markers for major sections:
 
 ```yaml
-- uses: tsviz/actions-runner-telemetry@v1
+- name: Start Telemetry
+  uses: tsviz/actions-runner-telemetry@v1
 
 # ... your build steps ...
+# (optionally add step markers before major work)
 
 - name: Stop Telemetry & Generate Report
   if: always()
   uses: tsviz/actions-runner-telemetry@v1
   with:
+````
     mode: stop
 ```
 
