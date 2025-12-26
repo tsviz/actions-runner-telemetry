@@ -38,7 +38,7 @@ case "$MODE" in
     
     # Start collector in background
     echo "Starting background telemetry collector..."
-    nohup python3 /telemetry_collector.py start > /tmp/telemetry_collector.log 2>&1 &
+    nohup env TELEMETRY_DATA_FILE="$TELEMETRY_DATA_FILE" TELEMETRY_INTERVAL="$TELEMETRY_INTERVAL" python3 /telemetry_collector.py start > /tmp/telemetry_collector.log 2>&1 &
     COLLECTOR_PID=$!
     echo "$COLLECTOR_PID" > /tmp/telemetry_collector.pid
     
