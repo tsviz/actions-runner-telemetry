@@ -35,9 +35,10 @@ jobs:
           
           # Determine tags
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#v}
             MAJOR_VERSION=$(echo $VERSION | cut -d. -f1)
-            echo "tags=${IMAGE_NAME}:${VERSION},${IMAGE_NAME}:${MAJOR_VERSION},${IMAGE_NAME}:latest" >> $GITHUB_OUTPUT
+            echo "tags=${IMAGE_NAME}:${TAG},${IMAGE_NAME}:v${MAJOR_VERSION},${IMAGE_NAME}:latest" >> $GITHUB_OUTPUT
           else
             echo "tags=${IMAGE_NAME}:latest" >> $GITHUB_OUTPUT
           fi
