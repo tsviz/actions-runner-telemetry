@@ -146,13 +146,14 @@ runs:
       env:
         INPUT_ENABLED: ${{ inputs.enabled }}
         TELEMETRY_ACTION_PATH: ${{ github.action_path }}
+        TELEMETRY_DATA_FILE: ${{ github.workspace }}/.telemetry_data.json
       run: |
         if [[ "$INPUT_ENABLED" == "false" || "$INPUT_ENABLED" == "0" ]]; then
           exit 0
         fi
         
         # Check if telemetry was started
-        if [ ! -f /tmp/telemetry_collector.pid ] && [ ! -f "${GITHUB_WORKSPACE}/.telemetry_data.json" ]; then
+        if [ ! -f /tmp/telemetry_collector.pid ] && [ ! -f "$TELEMETRY_DATA_FILE" ]; then
           exit 0
         fi
         
