@@ -135,75 +135,75 @@ Done. The report appears in your workflow summary when the job finishes.
 
 ## Installation
 
-### Minimal (One-liner)
+### Minimal (Recommended)
+
+Just add one step at the beginning - the report generates automatically:
 
 ```yaml
 - uses: tsviz/actions-runner-telemetry@v1
 ```
 
-Runs in background, generates report at the end.
+Done. The report appears in your workflow summary when the job finishes.
 
-### Full Control
+### With Options
 
 ```yaml
-- name: Start monitoring
+- name: Monitor with 5-second intervals
   uses: tsviz/actions-runner-telemetry@v1
+  with:
+    interval: '5'
+    enabled: 'true'
+```
 
-# ... your build steps ...
+### Advanced: Per-Step Tracking
 
-- name: Generate report
-  if: always()  # Runs even if steps fail
+Mark specific steps to break down resource usage:
+
+```yaml
+- uses: tsviz/actions-runner-telemetry@v1
+
+- name: '[Telemetry] Install'
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: step
+    step-name: "Install Dependencies"
+
+- name: Install Dependencies
+  run: npm ci
+
+- name: '[Telemetry] Build'
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: step
+    step-name: "Build"
+
+- name: Build
+  run: npm run build
+
+- name: '[Telemetry] Test'
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: step
+    step-name: "Test"
+
+- name: Test
+  run: npm test
+
+# IMPORTANT: When using per-step tracking, add explicit stop step at the end
+- name: Stop Telemetry
+  if: always()
   uses: tsviz/actions-runner-telemetry@v1
   with:
     mode: stop
 ```
 
-### With Per-Step Tracking
+Report will include per-step resource breakdown for each marked section.
 
-Want to know which step uses the most resources?
-
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  
-  - name: Start
-    uses: tsviz/actions-runner-telemetry@v1
-
-  - name: Mark - Install
-    uses: tsviz/actions-runner-telemetry@v1
-    with:
-      mode: step
-      step-name: "Install Dependencies"
-  
-  - name: Install
-    run: npm ci
-  
-  - name: Mark - Build  
-    uses: tsviz/actions-runner-telemetry@v1
-    with:
-      mode: step
-      step-name: "Build"
-  
-  - name: Build
-    run: npm run build
-  
-  - name: Mark - Test
-    uses: tsviz/actions-runner-telemetry@v1
-    with:
-      mode: step
-      step-name: "Test"
-  
-  - name: Test
-    run: npm test
-  
-  - name: Stop
-    if: always()
-    uses: tsviz/actions-runner-telemetry@v1
-    with:
-      mode: stop
+**Note:** Per-step tracking requires an explicit `mode: stop` step at the end to properly finalize the telemetry data. The simple start-only pattern (Minimal section above) handles this automatically via Docker action's post-entrypoint.
+    mode: stop
 ```
 
-Now your report includes a per-step breakdown showing which step used the most CPU/memory.
+
 
 ## Options
 
@@ -216,10 +216,10 @@ Now your report includes a per-step breakdown showing which step used the most C
 
 ### Modes Explained
 
-- **`start`** - Begin monitoring (default)
-- **`stop`** - Stop and generate the report
-- **`step`** - Mark a step boundary 
-- **`snapshot`** - Quick 10-second capture
+- **`start`** - Begin monitoring (default, recommended for most users)
+- **`step`** - Mark a step boundary for per-step resource tracking
+- **`stop`** - Manually stop and generate report (only needed if you don't want automatic post-step)
+- **`snapshot`** - Quick 10-second capture without waiting for full job
 
 ## What Gets Measured
 

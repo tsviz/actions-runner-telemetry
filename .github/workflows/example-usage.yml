@@ -156,6 +156,14 @@ jobs:
             sleep 1
           done
 
+      # Stop telemetry and generate report (required for per-step tracking)
+      - name: Stop Telemetry
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
       - name: Upload Telemetry Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -289,6 +297,14 @@ jobs:
               print(f'  Processed dataset {i+1}/3 (avg: {result:.4f})')
           print('Data processing complete')
           "
+
+      # Stop telemetry and generate report (required for per-step tracking)
+      - name: Stop Telemetry
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Upload Heavy Workload Report
         if: always()
