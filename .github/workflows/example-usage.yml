@@ -22,9 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Start telemetry - report generates automatically at job end
-      - name: Start Telemetry
+      # Telemetry runs automatically from start to finish - no stop step needed!
+      - name: Telemetry
         uses: tsviz/actions-runner-telemetry@v1
+        with:
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Simulated workload steps (replace with your actual build commands)
       - name: Simulate Install Dependencies
@@ -85,6 +87,9 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════════
   # ALTERNATIVE: With per-step tracking for detailed analysis
+  # ═══════════════════════════════════════════════════════════════════
+  # Note: Still just one start step - Docker action's post-entrypoint
+  # automatically generates the report after all steps complete.
   # ═══════════════════════════════════════════════════════════════════
   build-with-steps:
     name: Build & Test (With Step Tracking)
@@ -151,14 +156,6 @@ jobs:
             sleep 1
           done
 
-      # Stop and generate report
-      - name: Stop Telemetry
-        if: always()
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: stop
-          enabled: ${{ env.TELEMETRY_ENABLED }}
-
       - name: Upload Telemetry Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -202,6 +199,7 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════════
   # OVERUTILIZED: Heavy workload that needs a larger runner
+  # Report auto-generates via Docker action post-entrypoint
   # ═══════════════════════════════════════════════════════════════════
   heavy-workload:
     name: Heavy Build (Over Utilized)
@@ -291,14 +289,6 @@ jobs:
               print(f'  Processed dataset {i+1}/3 (avg: {result:.4f})')
           print('Data processing complete')
           "
-
-      # Stop and generate report
-      - name: Stop Telemetry
-        if: always()
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: stop
-          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Upload Heavy Workload Report
         if: always()
