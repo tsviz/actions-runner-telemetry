@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Telemetry runs automatically from start to finish - no stop step needed!
+      # Start telemetry
       - name: Telemetry
         uses: tsviz/actions-runner-telemetry@v1
         with:
@@ -69,6 +69,14 @@ jobs:
           echo "🔍 Linting code..."
           sleep 2
           echo "✅ No linting issues found"
+
+      # Stop telemetry and generate report
+      - name: Stop Telemetry
+        if: always()
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: stop
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Upload telemetry artifacts (optional)
       - name: Upload Telemetry Report

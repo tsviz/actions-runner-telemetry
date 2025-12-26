@@ -137,10 +137,18 @@ Done. The report appears in your workflow summary when the job finishes.
 
 ### Minimal (Recommended)
 
-Just add one step at the beginning - the report generates automatically:
+Add telemetry to your workflow and it handles the rest:
 
 ```yaml
 - uses: tsviz/actions-runner-telemetry@v1
+
+# ... your build steps ...
+
+- name: Stop Telemetry & Generate Report
+  if: always()
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: stop
 ```
 
 Done. The report appears in your workflow summary when the job finishes.
@@ -153,6 +161,14 @@ Done. The report appears in your workflow summary when the job finishes.
   with:
     interval: '5'
     enabled: 'true'
+
+# ... your build steps ...
+
+- name: Stop Telemetry
+  if: always()
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: stop
 ```
 
 ### Advanced: Per-Step Tracking
@@ -189,7 +205,7 @@ Mark specific steps to break down resource usage:
 - name: Test
   run: npm test
 
-# IMPORTANT: When using per-step tracking, add explicit stop step at the end
+# IMPORTANT: Always add explicit stop step to finalize telemetry data
 - name: Stop Telemetry
   if: always()
   uses: tsviz/actions-runner-telemetry@v1
@@ -199,7 +215,7 @@ Mark specific steps to break down resource usage:
 
 Report will include per-step resource breakdown for each marked section.
 
-**Note:** Per-step tracking requires an explicit `mode: stop` step at the end to properly finalize the telemetry data. The simple start-only pattern (Minimal section above) handles this automatically via Docker action's post-entrypoint.
+**Note:** Always include an explicit `mode: stop` step at the end to properly finalize telemetry data and generate the report. This applies to all usage patterns.
     mode: stop
 ```
 
