@@ -14,11 +14,11 @@ export TELEMETRY_INTERVAL="$INTERVAL"
 if [ "$ENABLED" = "false" ] || [ "$ENABLED" = "0" ] || [ "$ENABLED" = "no" ]; then
   echo "🔍 Runner Telemetry - DISABLED"
   echo "   Skipping telemetry collection (enabled=false)"
-  echo "::set-output name=enabled::false"
+  echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
-echo "::set-output name=enabled::true"
+echo "enabled=true" >> "$GITHUB_OUTPUT"
 
 case "$MODE" in
   auto|start)
@@ -38,12 +38,16 @@ case "$MODE" in
     
     # Start collector in background
     echo "Starting background telemetry collector..."
-    nohup env TELEMETRY_DATA_FILE="$TELEMETRY_DATA_FILE" TELEMETRY_INTERVAL="$TELEMETRY_INTERVAL" python3 /telemetry_collector.py start > /tmp/telemetry_collector.log 2>&1 &
+    nohup env TELEMETRY_DATA_FILE="$TELEMETRY_DATA_FILE" TELEMETRY_INTERVAL="$TELEMETRY_INTERVAL" python3 /telemetry_collector.py start > "$GITHUB_WORKSPACE/.telemetry_collector.log" 2>&1 &
     COLLECTOR_PID=$!
-    echo "$COLLECTOR_PID" > /tmp/telemetry_collector.pid
+    echo "$COLLECTOR_PID" > "$GITHUB_WORKSPACE/.telemetry_collector.pid"
     
     echo "✅ Telemetry collector started (PID: $COLLECTOR_PID)"
+    echo "   Data file: $TELEMETRY_DATA_FILE"
     echo ""
+    # Wait a moment for collector to initialize and write first sample
+    sleep 1
+    
     if [ "$MODE" = "auto" ]; then
       echo "ℹ️  Report will be generated automatically at job completion"
     fi
@@ -66,15 +70,17 @@ case "$MODE" in
     # Legacy mode: Manual stop (for backward compatibility)
     echo "::group::📊 Stopping Telemetry & Generating Report"
     
-    # Stop the collector if running
-    if [ -f /tmp/telemetry_collector.pid ]; then
-      COLLECTOR_PID=$(cat /tmp/telemetry_collector.pid)
-      if kill -0 "$COLLECTOR_PID" 2>/dev/null; then
-        echo "Stopping collector (PID: $COLLECTOR_PID)..."
-        kill "$COLLECTOR_PID" 2>/dev/null || true
-        sleep 1
-      fi
-      rm -f /tmp/telemetry_collector.pid
+    TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE:-/github/workspace}/.telemetry_data.json"
+    export TELEMETRY_DATA_FILE
+    
+    # Stop the collector if running (check in workspace volume for portability)
+    if [ -f "$GITHUB_WORKSPACE/.telemetry_collector.pid" ]; then
+      COLLECTOR_PID=$(cat "$GITHUB_WORKSPACE/.telemetry_collector.pid")
+      echo "Stopping collector (PID: $COLLECTOR_PID from workspace)..."
+      # Note: Process may not exist in this container (different instance)
+      # But we can still finalize the data
+      kill "$COLLECTOR_PID" 2>/dev/null || true
+      sleep 1
     fi
     
     # Finalize data
