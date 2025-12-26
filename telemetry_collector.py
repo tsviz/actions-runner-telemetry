@@ -431,8 +431,8 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
             {'count': ctxt_count, 'timestamp': timestamp})
 
 def start_collection():
-    """Start collecting metrics."""
-    print(f"📊 Starting telemetry collection (interval: {SAMPLE_INTERVAL}s)")
+    """Initialize telemetry collection (step-level snapshots)."""
+    print("📊 Initializing telemetry collection (step-level)")
     
     # Initial metadata
     data = {
@@ -440,6 +440,7 @@ def start_collection():
         'start_datetime': datetime.now().isoformat(),
         'interval': SAMPLE_INTERVAL,
         'samples': [],
+        'steps': [],
         'initial_snapshot': {
             'cpu_count': os.cpu_count(),
             'memory': get_memory_info(),
@@ -463,52 +464,9 @@ def start_collection():
     
     # Save initial data
     with open(DATA_FILE, 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
     
-    # Collection loop
-    prev_cpu = None
-    prev_cpu_detailed = None
-    prev_disk = None
-    prev_net = None
-    prev_ctxt = None
-    
-    try:
-        while True:
-            sample, prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt = collect_sample(
-                prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt
-            )
-            
-            # Load existing data with error handling
-            try:
-                with open(DATA_FILE, 'r') as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                print(f"  ⚠️  Failed to read data file, retrying: {e}")
-                time.sleep(0.1)
-                continue
-            
-            # Append sample
-            data['samples'].append(sample)
-            data['last_update'] = time.time()
-            
-            # Save with atomic write (write to temp file, then rename)
-            temp_file = DATA_FILE + '.tmp'
-            try:
-                with open(temp_file, 'w') as f:
-                    json.dump(data, f, indent=2)
-                os.replace(temp_file, DATA_FILE)
-            except (IOError, OSError) as e:
-                print(f"  ⚠️  Failed to write data file: {e}")
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            
-            iowait = sample.get('cpu_iowait_percent', 0)
-            steal = sample.get('cpu_steal_percent', 0)
-            print(f"  Sample {len(data['samples'])}: CPU={sample['cpu_percent']:.1f}% MEM={sample['memory']['percent']:.1f}% IO={iowait:.1f}% Steal={steal:.1f}%")
-            
-            time.sleep(SAMPLE_INTERVAL)
-    except KeyboardInterrupt:
-        print("\n📊 Collection stopped")
+    print("✅ Telemetry initialized")
 
 def stop_collection():
     """Stop collection and finalize data."""
