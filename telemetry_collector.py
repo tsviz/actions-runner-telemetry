@@ -521,10 +521,13 @@ def stop_collection():
     return data
 
 def mark_step(step_name):
-    """Mark the beginning of a new step."""
+    """Mark a step and capture resource snapshot at this moment."""
     if not os.path.exists(DATA_FILE):
         print(f"⚠️  No telemetry data file found. Start collection first.")
         return
+    
+    # Capture current sample
+    sample, _, _, _, _, _ = collect_sample()
     
     # Retry logic for race conditions
     max_retries = 3
@@ -544,6 +547,9 @@ def mark_step(step_name):
     current_time = time.time()
     current_datetime = datetime.now().isoformat()
     
+    # Add sample to collection
+    data['samples'].append(sample)
+    
     # Initialize steps list if not exists
     if 'steps' not in data:
         data['steps'] = []
@@ -556,14 +562,15 @@ def mark_step(step_name):
             last_step['end_datetime'] = current_datetime
             last_step['duration'] = last_step['end_time'] - last_step['start_time']
             # Calculate sample range for this step
-            last_step['sample_end_idx'] = len(data.get('samples', [])) - 1
+            last_step['sample_end_idx'] = len(data['samples']) - 2
     
     # Add new step
     new_step = {
         'name': step_name,
         'start_time': current_time,
         'start_datetime': current_datetime,
-        'sample_start_idx': len(data.get('samples', []))
+        'sample_start_idx': len(data['samples']) - 1,
+        'sample': sample  # Store the snapshot
     }
     data['steps'].append(new_step)
     
@@ -578,6 +585,8 @@ def mark_step(step_name):
         if os.path.exists(temp_file):
             os.remove(temp_file)
         return
+    
+    print(f"📍 Marked step: {step_name} (CPU: {sample['cpu_percent']:.1f}%, Mem: {sample['memory']['percent']:.1f}%)")
     
     print(f"📍 Step marked: {step_name}")
 
