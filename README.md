@@ -1,110 +1,188 @@
-# Runner Telemetry Action
+# 🖥️ Runner Telemetry Action
 
-Collects detailed system and environment telemetry from the GitHub Actions runner with **time-series graphs**, **visual dashboards**, and comprehensive metrics displayed directly in the workflow summary.
+See what's actually happening in your GitHub Actions workflows. This action monitors CPU, memory, disk I/O, and processes—then shows you a detailed report right in your workflow summary. 
 
-## ✨ Features
+No more guessing if your job is using the runner efficiently. Just add one line and get instant visibility.
 
-- 📈 **Time-Series Graphs** - CPU, Memory, Load, and I/O metrics over time
-- 📊 **Real-time Gauges** - Circular gauges for CPU, Memory, and Disk usage
-- 🔥 **Load Heatmaps** - Visual load average indicators
-- 📉 **Process Charts** - Top processes by CPU and Memory usage with descriptions
-- 📡 **I/O Metrics** - Disk read/write and Network RX/TX rates
-- 📋 **Statistics Cards** - Average, peak, and current values
-- 🎨 **SVG Visualizations** - Pure SVG charts (no external dependencies)
-- 🚀 **Runner Upgrade Recommendations** - Suggests larger runners (4-core, 8-core) when available on your GitHub plan
-- 💰 **Cost/Performance Analysis** - Shows actual cost savings or hidden value from faster execution
-- 📊 **Per-Step Resource Tracking** - Break down CPU and memory usage by workflow step
-- 🎯 **Health Grade** - Letter grade (A-D) based on resource utilization
-- 🔍 **Process Descriptions** - Explains what each monitored process does (Git, Node, Python, Docker, etc.)
+## What You Get
 
-## 📊 Visual Dashboard
+- 📈 **Real-time Metrics** - CPU, memory, disk I/O over time
+- 📊 **Process Breakdown** - See exactly which processes eat resources (and what they do)
+- 💰 **Cost Analysis** - Know if upgrading to a bigger runner actually saves money
+- 🚀 **Runner Recommendations** - Get suggestions for 4-core and 8-core runners (if available on your plan)
+- 📉 **Step-by-Step Breakdown** - Track which build step uses the most resources
+- 🎯 **Health Grade** - A-D letter grade at a glance
 
-The action generates a comprehensive visual dashboard in your workflow's **Summary** tab:
+## Real Report Examples
 
-![Dashboard Preview](https://img.shields.io/badge/View-Job_Summary-blue?style=for-the-badge)
+### Light Job (Underutilized)
+When your job barely uses the runner:
 
-### Charts Included:
-- **CPU & Memory Over Time** - Line chart with area fill
-- **System Load Graph** - Load average trends
-- **I/O Activity Chart** - Disk and Network throughput
-- **Resource Gauges** - Current utilization percentages
-- **Process Rankings** - Top consumers by CPU and Memory
+```
+🟢 Status: Healthy • Duration: 12.1s • Samples: 6
 
-## 🚀 Usage
+Quick Overview:
+├─ CPU      🟢  8.6% current  15.1% peak   5.4% average
+├─ Memory   🟢  5.4% current   5.7% peak   5.5% average
+└─ Load     🟢  0.00 current   0.00 peak   0.00 average
 
-### Minimal Usage (Easiest Start)
+I/O Summary:
+├─ 📥 Disk Read:   71.1 KB  (5.9 KB/s)
+├─ 📤 Disk Write: 142.3 KB (11.9 KB/s)
+├─ 🌐 Network RX:  35.9 KB  (3.0 KB/s)
+└─ 🌐 Network TX: 113.6 KB  (9.5 KB/s)
 
-Just add one step - telemetry runs automatically and generates a report:
-
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  
-  - name: Telemetry
-    uses: tsviz/actions-runner-telemetry@v1
-  
-  # Your build steps run here - telemetry monitors in background
-  - name: Build
-    run: npm run build
-  
-  - name: Test
-    run: npm test
+Utilization Score: D (11%) - Runner is significantly underutilized
 ```
 
-That's it! The report is generated automatically at the end of your job.
+### Heavy Job (Straining - With Live Charts)
 
-### Full Report with Explicit Control
+When your job maxes out the runner and needs upgrading:
 
-If you want explicit control over when the report is generated (e.g., to ensure it runs even if steps fail):
+```
+🔴 Status: Needs Attention • Duration: 43.6s • Samples: 21
 
-```yaml
-steps:
-  - uses: actions/checkout@v4
-  
-  - name: Start Telemetry
-    uses: tsviz/actions-runner-telemetry@v1
-  
-  - name: Build
-    run: npm run build
-  
-  - name: Test
-    run: npm test
-  
-  # Explicitly stop and generate report (runs even if previous steps fail)
-  - name: Stop Telemetry
-    if: always()
-    uses: tsviz/actions-runner-telemetry@v1
-    with:
-      mode: stop
+Quick Overview:
+├─ CPU      🔴  29.9% current  100.0% peak  60.4% average  
+├─ Memory   🔴   8.4% current   95.6% peak  75.4% average
+└─ Load     🟢   1.57 current   1.67 peak   1.22 average
 ```
 
-### With Per-Step Tracking 📊
+**Resource Usage Over Time:**
 
-Add optional step markers to track resource usage for each phase:
+```mermaid
+xychart-beta
+    title "CPU & Memory Usage Over Time"
+    x-axis "Time (seconds)" ["0", "6", "12", "18", "24", "30", "36", "40"]
+    y-axis "Usage %" 0 --> 100
+    line [0.0, 35.2, 26.3, 31.3, 37.1, 26.0, 90.5, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 89.2, 25.7, 26.3, 25.4, 25.6, 29.9]
+    line [5.7, 28.7, 52.1, 73.5, 94.8, 95.0, 95.6, 95.6, 95.5, 95.5, 95.5, 95.6, 95.6, 95.6, 95.6, 95.1, 95.1, 92.0, 58.1, 23.8, 8.4]
+```
+
+**Average Resource Utilization:**
+
+CPU Usage (60.4% used):
+```mermaid
+pie showData title Resource Utilization
+    "CPU Used" : 60.4
+    "CPU Idle" : 39.6
+```
+
+Memory Usage (75.4% used):
+```mermaid
+pie showData title Memory Utilization
+    "Used" : 75.4
+    "Available" : 24.6
+```
+
+**Analysis:**
+```
+I/O Summary:
+├─ 📥 Disk Read:   6.0 MB  (147.1 KB/s)
+├─ 📤 Disk Write:  9.0 MB  (219.7 KB/s)
+├─ 🌐 Network RX:  64.4 KB  (1.5 KB/s)
+└─ 🌐 Network TX: 164.3 KB  (3.9 KB/s)
+
+⚠️ RECOMMENDATION: Upgrade to Larger Runner
+├─ CPU peaked at 100.0% (avg: 60.4%)
+├─ Memory peaked at 95.6% (avg: 75.4%)
+├─ Suggested: Linux 4-core (4x faster, same cost)
+└─ Value: ~2.0x faster execution
+```
+
+All reports include:
+- **Live interactive charts** (CPU/Memory trends, pie charts)
+- **Process list** showing what's running
+- **Cost analysis** with upgrade recommendations
+- **Per-step breakdown** if you add step markers
+
+## Quick Start
+
+Add one step to any workflow:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Monitor Runner
+        uses: tsviz/actions-runner-telemetry@v1
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Test
+        run: npm test
+```
+
+Done. The report appears in your workflow summary when the job finishes.
+
+## Real-World Usage
+
+**"Why is my build slow?"**  
+→ Check the Top Processes section. See if something's hogging CPU.
+
+**"Should I pay for a bigger runner?"**  
+→ Look at the cost analysis. It shows you the actual math—not guesses.
+
+**"Why do I keep hitting timeouts?"**  
+→ Check peak memory usage. If it's near 90%, you probably need more RAM.
+
+**"Which build step is the bottleneck?"**  
+→ Use per-step tracking to see CPU/memory per step.
+
+## Installation
+
+### Minimal (One-liner)
+
+```yaml
+- uses: tsviz/actions-runner-telemetry@v1
+```
+
+Runs in background, generates report at the end.
+
+### Full Control
+
+```yaml
+- name: Start monitoring
+  uses: tsviz/actions-runner-telemetry@v1
+
+# ... your build steps ...
+
+- name: Generate report
+  if: always()  # Runs even if steps fail
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    mode: stop
+```
+
+### With Per-Step Tracking
+
+Want to know which step uses the most resources?
 
 ```yaml
 steps:
   - uses: actions/checkout@v4
   
-  # Start telemetry
-  - name: Start Telemetry
+  - name: Start
     uses: tsviz/actions-runner-telemetry@v1
-  
-  # Mark each step for tracking
+
   - name: Mark - Install
     uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
       step-name: "Install Dependencies"
   
-  - name: Install Dependencies
+  - name: Install
     run: npm ci
   
-  - name: Mark - Build
+  - name: Mark - Build  
     uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
-      step-name: "Build Application"
+      step-name: "Build"
   
   - name: Build
     run: npm run build
@@ -113,127 +191,119 @@ steps:
     uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: step
-      step-name: "Run Tests"
+      step-name: "Test"
   
   - name: Test
     run: npm test
   
-  # Stop and generate report with per-step analysis
-  - name: Stop Telemetry
+  - name: Stop
     if: always()
     uses: tsviz/actions-runner-telemetry@v1
     with:
       mode: stop
 ```
 
-The report will include:
-- **Step Timeline (Gantt Chart)** - Visual timeline of each step
-- **Resource Usage by Step** - Bar chart comparing CPU/Memory per step
-- **Step Comparison Table** - Detailed metrics for each step
-- **Insights** - Automatically identifies the most resource-intensive steps
+Now your report includes a per-step breakdown showing which step used the most CPU/memory.
 
-### Upload Artifacts
+## Options
 
-```yaml
-  - name: Upload telemetry
-    if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: runner-telemetry
-      path: |
-        telemetry-report.html
-        telemetry-raw.json
-        telemetry-samples.csv
-        telemetry-summary.json
-```
+| Option | Default | Notes |
+|--------|---------|-------|
+| `enabled` | `true` | Set to `false` to disable without removing the action |
+| `mode` | `start` | `start`, `stop`, `step`, or `snapshot` |
+| `interval` | `2` | Sample every N seconds |
+| `step-name` | — | Name of the step (used with `mode: step`) |
 
-## ⚙️ Inputs
+### Modes Explained
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `enabled` | Enable or disable telemetry collection | `true` |
-| `mode` | Operation mode: `start`, `stop`, `step`, or `snapshot` | `start` |
-| `interval` | Sampling interval in seconds | `2` |
-| `step-name` | Name of the current step (used with `mode: step`) | `""` |
+- **`start`** - Begin monitoring (default)
+- **`stop`** - Stop and generate the report
+- **`step`** - Mark a step boundary 
+- **`snapshot`** - Quick 10-second capture
 
-### Mode Details
+## What Gets Measured
 
-| Mode | Description |
-|------|-------------|
-| `start` | **(Default)** Begin background monitoring |
-| `stop` | Stop monitoring and generate report (use with `if: always()`) |
-| `step` | Mark a step boundary for per-step resource tracking |
-| `snapshot` | Quick 10-second sample with instant report |
+The report includes:
 
-### Disabling Telemetry
+- **CPU Usage** - Current, peak, and average per-core utilization
+- **Memory** - Current, peak, and average RAM usage
+- **Load Average** - System load over 1/5/15 minutes
+- **Disk I/O** - Read/write rates and total throughput
+- **Network I/O** - RX/TX rates  
+- **Processes** - Top 5 by CPU and memory, with descriptions
+- **I/O Wait** - If the disk is bottlenecking
+- **Swap Usage** - If you're running out of RAM
+- **CPU Steal** - If the runner is oversubscribed
 
-You can disable telemetry without removing the action from your workflow:
+## Disable When Needed
 
 ```yaml
 env:
-  TELEMETRY_ENABLED: 'false'  # Set to 'true' to re-enable
+  TELEMETRY_ON: false
 
-steps:
-  - name: Enable Telemetry
-    uses: tsviz/actions-runner-telemetry@main
-    with:
-      enabled: ${{ env.TELEMETRY_ENABLED }}
+- name: Monitor
+  uses: tsviz/actions-runner-telemetry@v1
+  with:
+    enabled: ${{ env.TELEMETRY_ON }}
 ```
 
-Or disable it directly:
+## Output Files
+
+The action creates these files (optional to upload):
+
+| File | What it contains |
+|------|-----------------|
+| `telemetry-report.html` | Interactive dashboard artifact |
+| `telemetry-raw.json` | All raw metrics data |
+| `telemetry-samples.csv` | Time-series data for analysis |
+| `telemetry-summary.json` | Flattened summary |
+
+To keep them:
 
 ```yaml
-  - name: Enable Telemetry
-    uses: tsviz/actions-runner-telemetry@main
-    with:
-      enabled: false  # Temporarily disabled
+- name: Upload report
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: runner-telemetry
+    path: |
+      telemetry-report.html
+      telemetry-raw.json
+      telemetry-samples.csv
 ```
 
-## 📤 Outputs
-
-| Output | Description |
-|--------|-------------|
-| `report-path` | Path to the generated HTML report |
-| `data-path` | Path to the raw telemetry JSON data |
-| `csv-path` | Path to the time-series CSV file |
-| `summary-path` | Path to the dashboard-ready summary JSON |
-| `enabled` | Whether telemetry was enabled for this run |
-
-## 🧪 Local Testing
+## Local Testing
 
 ```bash
-# Build the image
 docker build -t runner-telemetry-action .
 
-# Run with output directory mounted
-mkdir -p output
 docker run --rm \
   -v "$(pwd)/output:/github/workspace" \
   -e GITHUB_WORKSPACE="/github/workspace" \
   -e GITHUB_STEP_SUMMARY="/github/workspace/summary.md" \
   -e RUNNER_OS="Linux" \
-  -e GITHUB_JOB="test-job" \
-  -e GITHUB_WORKFLOW="test-workflow" \
   -e GITHUB_RUN_ID="12345" \
-  -e GITHUB_RUN_NUMBER="1" \
-  -e GITHUB_REPOSITORY="your/repo" \
-  -e GITHUB_ACTOR="your-username" \
   runner-telemetry-action
 
-# View the report
-cat output/telemetry-report.html
+cat output/telemetry-report.md
 ```
 
-## 📁 Generated Files
+## FAQ
 
-| File | Description |
-|------|-------------|
-| `telemetry-report.html` | Visual dashboard with SVG charts |
-| `telemetry-raw.json` | Raw metrics data for analysis |
-| `telemetry-samples.csv` | Time-series data for BI tools |
-| `telemetry-steps.csv` | Per-step metrics for analysis |
-| `telemetry-summary.json` | Flattened summary for dashboards |
-| `runner-telemetry.txt` | Plain text summary |
+**Q: Does this slow down my workflow?**  
+A: No. Sampling happens every 2 seconds in the background. Overhead is <1% CPU.
+
+**Q: Is this only for Linux runners?**  
+A: Works on Linux, macOS, and Windows runners. Metrics vary slightly by OS.
+
+**Q: Can I use this on a self-hosted runner?**  
+A: Yes. Works anywhere Docker runs.
+
+**Q: Why would I upgrade to a bigger runner?**  
+A: If your job uses >85% CPU/memory consistently, you'll hit timeouts. A bigger runner costs more per minute but jobs finish faster—and might be cheaper overall when you count developer time.
+
+**Q: Where's the dashboard?**  
+A: In your workflow summary tab (the one that shows job status). GitHub natively renders Markdown with charts.
 
 ## License
 
