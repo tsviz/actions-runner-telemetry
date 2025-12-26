@@ -80,7 +80,7 @@ runs:
             echo $! > /tmp/telemetry_collector.pid
             
             echo "✅ Telemetry collector started (PID: $(cat /tmp/telemetry_collector.pid))"
-            echo "ℹ️  Add 'mode: stop' with 'if: always()' at job end to generate report"
+            echo "✨ Report will be generated automatically at job end"
             echo "::endgroup::"
             ;;
           
@@ -137,6 +137,44 @@ runs:
             exit 1
             ;;
         esac
+    
+    # Post step: Automatically runs after job completes to generate report
+    - name: Generate Telemetry Report
+      id: post
+      if: always() && inputs.mode == 'start'
+      shell: bash
+      env:
+        INPUT_ENABLED: ${{ inputs.enabled }}
+        TELEMETRY_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [[ "$INPUT_ENABLED" == "false" || "$INPUT_ENABLED" == "0" ]]; then
+          exit 0
+        fi
+        
+        # Check if telemetry was started
+        if [ ! -f /tmp/telemetry_collector.pid ] && [ ! -f "${GITHUB_WORKSPACE}/.telemetry_data.json" ]; then
+          exit 0
+        fi
+        
+        echo "::group::📊 Generating Telemetry Report"
+        
+        # Stop the collector if running
+        if [ -f /tmp/telemetry_collector.pid ]; then
+          COLLECTOR_PID=$(cat /tmp/telemetry_collector.pid)
+          if kill -0 "$COLLECTOR_PID" 2>/dev/null; then
+            echo "Stopping telemetry collector..."
+            kill "$COLLECTOR_PID" 2>/dev/null || true
+            sleep 1
+          fi
+          rm -f /tmp/telemetry_collector.pid
+        fi
+        
+        # Finalize and generate report
+        python3 "${TELEMETRY_ACTION_PATH}/telemetry_collector.py" stop
+        python3 "${TELEMETRY_ACTION_PATH}/generate_report.py"
+        
+        echo "::endgroup::"
+        echo "✅ Telemetry report generated"
 branding:
   icon: "activity"
   color: "blue"

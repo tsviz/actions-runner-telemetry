@@ -22,13 +22,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ╔═══════════════════════════════════════════════════════════════╗
-      # ║  START TELEMETRY                                               ║
-      # ╚═══════════════════════════════════════════════════════════════╝
+      # Start telemetry - report generates automatically at job end
       - name: Start Telemetry
         uses: tsviz/actions-runner-telemetry@v1
-        with:
-          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Simulated workload steps (replace with your actual build commands)
       - name: Simulate Install Dependencies
@@ -71,16 +67,6 @@ jobs:
           echo "🔍 Linting code..."
           sleep 2
           echo "✅ No linting issues found"
-
-      # ╔═══════════════════════════════════════════════════════════════╗
-      # ║  STOP TELEMETRY - Use if: always() to run even if steps fail  ║
-      # ╚═══════════════════════════════════════════════════════════════╝
-      - name: Stop Telemetry
-        if: always()
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: stop
-          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Upload telemetry artifacts (optional)
       - name: Upload Telemetry Report
