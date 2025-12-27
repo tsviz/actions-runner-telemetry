@@ -230,6 +230,14 @@ jobs:
         with:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
+      # Mark beginning of heavy workload (baseline before work starts)
+      - name: '[Telemetry] Before Heavy Load'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Before Heavy Load"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
       # Heavy parallel workload that maxes out the runner
       - name: Heavy CPU & Memory Load
         run: |
