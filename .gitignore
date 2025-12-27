@@ -17,4 +17,12 @@ telemetry-*.csv
 
 # Local test scripts (not needed in production)
 test_local.sh
+test_local.py
 test_simulation.sh
+test_docker.sh
+test_memory_logic.py
+
+# Keep these committed for validation:
+# - test_scenarios.py (comprehensive test suite)
+# - test_all_scenarios.sh (test runner)
+# - test_integrated.py (reference implementation)

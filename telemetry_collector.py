@@ -539,9 +539,12 @@ def stop_collection():
     # Atomic write
     temp_file = DATA_FILE + '.tmp'
     try:
+        print(f"💾 Writing data to {DATA_FILE}")
         with open(temp_file, 'w') as f:
             json.dump(data, f, indent=2)
+        print(f"💾 Replacing temp file...")
         os.replace(temp_file, DATA_FILE)
+        print(f"✅ Data written successfully")
     except (IOError, OSError) as e:
         print(f"⚠️  Failed to finalize data: {e}")
         if os.path.exists(temp_file):

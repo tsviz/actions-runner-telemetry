@@ -224,3 +224,158 @@ jobs:
           else
             echo "⚠️ No snapshot report found"
           fi
+
+  test-scenarios:
+    name: Test Comprehensive Scenarios
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Start telemetry
+      - name: Start Telemetry
+        uses: ./
+        with:
+          enabled: true
+
+      # Scenario 1: Heavy Memory Load
+      - name: Scenario 1 - Heavy Memory Load
+        run: |
+          echo "📊 Scenario 1: Allocating 1.5GB memory..."
+          python3 -c "
+          import sys
+          # Allocate 1.5GB of memory
+          arrays = [list(range(125000000)) for _ in range(3)]
+          print('✅ Allocated 1.5GB successfully')
+          print(f'Memory in use: {sys.getsizeof(arrays) // (1024*1024)}MB')
+          "
+
+      # Scenario 2: Heavy CPU Load
+      - name: Scenario 2 - Heavy CPU Load
+        run: |
+          echo "📊 Scenario 2: Running CPU-intensive work..."
+          python3 -c "
+          import math, time
+          start = time.time()
+          result = 0
+          for i in range(100000000):
+              result += math.sin(i) * math.cos(i)
+          elapsed = time.time() - start
+          print(f'✅ Completed 100M iterations in {elapsed:.2f}s')
+          print(f'Result: {result}')
+          "
+
+      # Scenario 3: Balanced Load
+      - name: Scenario 3 - Balanced Load (CPU + Memory)
+        run: |
+          echo "📊 Scenario 3: Running balanced workload..."
+          python3 -c "
+          import math, time
+          # Allocate some memory
+          data = [0] * (1024 * 1024 * 1024)  # 1GB
+          print('✅ Allocated 1GB memory')
+          # Do some CPU work
+          result = sum(math.sin(i) for i in range(10000000))
+          print(f'✅ Completed CPU work: {result}')
+          "
+
+      # Scenario 4: Multiple Sequential Steps (marked with step tracker)
+      - name: "Scenario 4.1 - Compile"
+        uses: ./
+        with:
+          mode: step
+          step-name: "Compile"
+          enabled: true
+
+      - name: Scenario 4.1 - Compile Work
+        run: echo "Compiling..." && sleep 1
+
+      - name: "Scenario 4.2 - Test"
+        uses: ./
+        with:
+          mode: step
+          step-name: "Test"
+          enabled: true
+
+      - name: Scenario 4.2 - Test Work
+        run: echo "Testing..." && sleep 1
+
+      - name: "Scenario 4.3 - Build"
+        uses: ./
+        with:
+          mode: step
+          step-name: "Build"
+          enabled: true
+
+      - name: Scenario 4.3 - Build Work
+        run: echo "Building..." && sleep 1
+
+      - name: "Scenario 4.4 - Deploy"
+        uses: ./
+        with:
+          mode: step
+          step-name: "Deploy"
+          enabled: true
+
+      - name: Scenario 4.4 - Deploy Work
+        run: echo "Deploying..." && sleep 1
+
+      # Scenario 5: Light Workload (Baseline)
+      - name: Scenario 5 - Light Workload
+        run: |
+          echo "📊 Scenario 5: Light workload baseline..."
+          sleep 2
+          echo "✅ Light workload complete"
+
+      # Stop telemetry and generate report
+      - name: Stop Telemetry
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: true
+
+      # Validate metrics were captured
+      - name: Validate Metrics
+        if: always()
+        run: |
+          echo "📊 Validating telemetry results..."
+          if [ -f "telemetry-report.html" ]; then
+            echo "✅ Telemetry report generated"
+            # Check file size - should have content
+            size=$(stat -f%z "telemetry-report.html" 2>/dev/null || stat -c%s "telemetry-report.html" 2>/dev/null || echo "0")
+            if [ "$size" -gt 1000 ]; then
+              echo "✅ Report contains data (size: $size bytes)"
+            fi
+          else
+            echo "⚠️ Warning: telemetry-report.html not found"
+          fi
+          
+          if [ -f "telemetry-raw.json" ]; then
+            echo "✅ Raw telemetry data captured"
+            python3 -c "
+            import json
+            with open('telemetry-raw.json') as f:
+              data = json.load(f)
+            samples = len(data.get('samples', []))
+            steps = len(data.get('steps', []))
+            print(f'  • Samples collected: {samples}')
+            print(f'  • Steps tracked: {steps}')
+            if samples > 0:
+              print('  ✅ Metrics captured successfully')
+            "
+          fi
+
+      - name: Upload Telemetry Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-scenarios-${{ github.run_id }}
+          path: |
+            telemetry-report.html
+            telemetry-raw.json
+            telemetry-samples.csv
+            telemetry-steps.csv
+            telemetry-summary.json
+          retention-days: 14
+          if-no-files-found: ignore
