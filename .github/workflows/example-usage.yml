@@ -29,6 +29,13 @@ jobs:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Simulated workload steps (replace with your actual build commands)
+      - name: '[Telemetry] Install Dependencies'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Install Dependencies"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
       - name: Simulate Install Dependencies
         run: |
           echo "📦 Simulating dependency installation..."
@@ -39,6 +46,13 @@ jobs:
             sleep 1
           done
           echo "✅ Dependencies installed"
+
+      - name: '[Telemetry] Build'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Build"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Simulate Build
         run: |
@@ -54,6 +68,13 @@ jobs:
           print('✅ Build complete')
           "
 
+      - name: '[Telemetry] Tests'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Tests"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
       - name: Simulate Tests
         run: |
           echo "🧪 Running tests..."
@@ -63,6 +84,13 @@ jobs:
           done
           wait
           echo "✅ All tests passed"
+
+      - name: '[Telemetry] Lint'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Lint"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       - name: Simulate Lint
         run: |
@@ -234,6 +262,13 @@ jobs:
       # DURING the workload in the same shell step, not in separate "uses:" steps.
       # Each "uses:" step runs in a new Docker container, so memory from the
       # previous step is no longer visible.
+      - name: '[Telemetry] Baseline'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Baseline"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
+
       - name: Heavy CPU & Memory Load
         run: |
           echo "⚠️  Running heavy workload with step marker..."
@@ -241,20 +276,10 @@ jobs:
           python3 << 'PYTHON_EOF'
           import time
           import os
-          import sys
-          import subprocess
           from multiprocessing import Pool
           
           print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
-          
-          # Mark baseline
-          sys.path.insert(0, '/telemetry_scripts')
-          try:
-              from telemetry_collector import mark_step
-              mark_step("Baseline")
-          except:
-              print("⚠️  Could not import telemetry_collector")
           
           # Allocate memory arrays
           print("💾 Pre-allocating memory (1.5GB sustained)...")
@@ -292,20 +317,19 @@ jobs:
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Total result: {total_result}")
-          
-          # MARK STEP WHILE MEMORY IS STILL ALLOCATED
-          # This is BEFORE we delete the arrays
-          print("📍 Marking heavy load step (while memory allocated)...")
-          try:
-              from telemetry_collector import mark_step
-              mark_step("Heavy Load Peak")
-          except Exception as e:
-              print(f"⚠️  Mark step error: {e}")
-          
-          # Now release memory
-          del huge_arrays
           print("✅ Heavy workload finished")
+          
+          # Keep arrays in memory for a moment
+          time.sleep(1)
+          del huge_arrays
           PYTHON_EOF
+
+      - name: '[Telemetry] Heavy Load Peak'
+        uses: tsviz/actions-runner-telemetry@v1
+        with:
+          mode: step
+          step-name: "Heavy Load Peak"
+          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Stop telemetry and generate report
       - name: Stop Telemetry
