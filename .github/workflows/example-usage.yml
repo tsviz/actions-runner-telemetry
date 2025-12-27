@@ -287,6 +287,9 @@ jobs:
           print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Total result: {total_result}")
           print(f"✅ Heavy workload finished - high CPU + sustained memory")
+          # Keep arrays in memory for ~10 seconds while step marker captures
+          import time as time_module
+          time_module.sleep(10)
           PYTHON_EOF
 
       # Mark end of heavy workload / begin data processing
