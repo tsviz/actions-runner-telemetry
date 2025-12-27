@@ -230,25 +230,31 @@ jobs:
         with:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
-      # Mark beginning of heavy workload (baseline before work starts)
-      - name: '[Telemetry] Before Heavy Load'
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: step
-          step-name: "Before Heavy Load"
-          enabled: ${{ env.TELEMETRY_ENABLED }}
-
-      # Heavy parallel workload that maxes out the runner
+      # ⚠️  IMPORTANT: For accurate memory metrics, step markers must be placed
+      # DURING the workload in the same shell step, not in separate "uses:" steps.
+      # Each "uses:" step runs in a new Docker container, so memory from the
+      # previous step is no longer visible.
       - name: Heavy CPU & Memory Load
         run: |
-          echo "⚠️  Running heavy workload that will stress runner resources..."
-          timeout 60 python3 << 'PYTHON_EOF'
+          echo "⚠️  Running heavy workload with step marker..."
+          
+          python3 << 'PYTHON_EOF'
           import time
           import os
+          import sys
+          import subprocess
           from multiprocessing import Pool
           
           print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
+          
+          # Mark baseline
+          sys.path.insert(0, '/telemetry_scripts')
+          try:
+              from telemetry_collector import mark_step
+              mark_step("Baseline")
+          except:
+              print("⚠️  Could not import telemetry_collector")
           
           # Allocate memory arrays
           print("💾 Pre-allocating memory (1.5GB sustained)...")
@@ -286,37 +292,22 @@ jobs:
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Total result: {total_result}")
-          print(f"✅ Heavy workload finished - high CPU + sustained memory")
-          # Keep arrays in memory for ~10 seconds while step marker captures
-          import time as time_module
-          time_module.sleep(10)
+          
+          # MARK STEP WHILE MEMORY IS STILL ALLOCATED
+          # This is BEFORE we delete the arrays
+          print("📍 Marking heavy load step (while memory allocated)...")
+          try:
+              from telemetry_collector import mark_step
+              mark_step("Heavy Load Peak")
+          except Exception as e:
+              print(f"⚠️  Mark step error: {e}")
+          
+          # Now release memory
+          del huge_arrays
+          print("✅ Heavy workload finished")
           PYTHON_EOF
 
-      # Mark end of heavy workload / begin data processing
-      - name: '[Telemetry] Data Processing'
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: step
-          step-name: "Data Processing"
-          enabled: ${{ env.TELEMETRY_ENABLED }}
-
-      - name: Data Processing
-        run: |
-          echo "Processing large datasets..."
-          python3 -c "
-          import random
-          import time
-          # Simulate data processing without external dependencies
-          print('Creating and processing large datasets...')
-          for i in range(3):
-              # Create large list (simulating data array)
-              data = [random.random() for _ in range(10000000)]
-              result = sum(data) / len(data)
-              print(f'  Processed dataset {i+1}/3 (avg: {result:.4f})')
-          print('Data processing complete')
-          "
-
-      # Stop telemetry and generate report (required for per-step tracking)
+      # Stop telemetry and generate report
       - name: Stop Telemetry
         if: always()
         uses: tsviz/actions-runner-telemetry@v1
