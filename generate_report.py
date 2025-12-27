@@ -1381,7 +1381,9 @@ def generate_html_dashboard(data):
                 }},
                 y: {{ 
                     grid: {{ color: '#21262d' }},
-                    ticks: {{ color: '#8b949e' }}
+                    ticks: {{ color: '#8b949e' }},
+                    beginAtZero: true,
+                    min: 0
                 }}
             }}
         }};
