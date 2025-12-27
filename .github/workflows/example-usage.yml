@@ -259,24 +259,25 @@ jobs:
           enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # ⚠️  IMPORTANT: For accurate memory metrics, step markers must be placed
-      # DURING the workload in the same shell step, not in separate "uses:" steps.
-      # Each "uses:" step runs in a new Docker container, so memory from the
-      # previous step is no longer visible.
-      - name: '[Telemetry] Baseline'
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: step
-          step-name: "Baseline"
-          enabled: ${{ env.TELEMETRY_ENABLED }}
-
+      # DURING the workload in the same process/container, not in separate "uses:" steps.
+      # Each "uses:" step runs in a new Docker container, so memory is no longer visible.
+      # Solution: Call mark_step() directly from Python while memory is allocated.
       - name: Heavy CPU & Memory Load
         run: |
-          echo "⚠️  Running heavy workload with step marker..."
+          echo "⚠️  Running heavy workload with memory tracking..."
           
           python3 << 'PYTHON_EOF'
-          import time
+          import sys
           import os
+          sys.path.insert(0, "/")
+          from telemetry_collector import mark_step
+          
+          import time
           from multiprocessing import Pool
+          
+          # Mark baseline BEFORE heavy work
+          print("📍 Marking baseline...")
+          mark_step("Baseline")
           
           print("📊 Starting heavy workload (CPU + Memory intensive)...")
           print(f"   CPU Count: {os.cpu_count()}")
@@ -317,19 +318,16 @@ jobs:
           elapsed = time.time() - start_time
           print(f"✅ Computation complete ({elapsed:.1f}s)")
           print(f"   Total result: {total_result}")
-          print("✅ Heavy workload finished")
           
-          # Keep arrays in memory for a moment
-          time.sleep(1)
+          # CRITICAL: Mark WHILE memory is still allocated in this process
+          print("📍 Marking heavy load peak (memory still allocated)...")
+          mark_step("Heavy Load Peak")
+          
+          # Now release memory
+          print("💾 Releasing memory...")
           del huge_arrays
+          print("✅ Heavy workload finished")
           PYTHON_EOF
-
-      - name: '[Telemetry] Heavy Load Peak'
-        uses: tsviz/actions-runner-telemetry@v1
-        with:
-          mode: step
-          step-name: "Heavy Load Peak"
-          enabled: ${{ env.TELEMETRY_ENABLED }}
 
       # Stop telemetry and generate report
       - name: Stop Telemetry
