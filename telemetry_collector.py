@@ -434,6 +434,13 @@ def start_collection():
     """Initialize telemetry collection (step-level snapshots)."""
     print("📊 Initializing telemetry collection (step-level)")
     
+    # Get initial state for delta calculations
+    initial_cpu = get_cpu_usage()
+    initial_cpu_detailed = get_cpu_detailed()
+    initial_disk = get_disk_io()
+    initial_net = get_network_io()
+    initial_ctxt = get_context_switches()
+    
     # Initial metadata
     data = {
         'start_time': time.time(),
@@ -441,6 +448,12 @@ def start_collection():
         'interval': SAMPLE_INTERVAL,
         'samples': [],
         'steps': [],
+        # Store initial state for delta calculations in step markers
+        'meta_cpu': list(initial_cpu) if initial_cpu else None,
+        'meta_cpu_detailed': initial_cpu_detailed,
+        'meta_disk': initial_disk | {'timestamp': time.time()},
+        'meta_net': initial_net | {'timestamp': time.time()},
+        'meta_ctxt': {'count': initial_ctxt, 'timestamp': time.time()},
         'initial_snapshot': {
             'cpu_count': os.cpu_count(),
             'memory': get_memory_info(),
@@ -526,9 +539,6 @@ def mark_step(step_name):
         print(f"⚠️  No telemetry data file found. Start collection first.")
         return
     
-    # Capture current sample
-    sample, _, _, _, _, _ = collect_sample()
-    
     # Retry logic for race conditions
     max_retries = 3
     for attempt in range(max_retries):
@@ -543,6 +553,43 @@ def mark_step(step_name):
             else:
                 print(f"⚠️  Failed to read telemetry data after {max_retries} attempts")
                 return
+    
+    # Get previous state from data file to calculate deltas
+    prev_cpu = None
+    prev_cpu_detailed = None
+    prev_disk = None
+    prev_net = None
+    prev_ctxt = None
+    
+    if 'samples' in data and len(data['samples']) > 0:
+        last_sample = data['samples'][-1]
+        # Extract previous state from metadata stored in data
+        if 'meta_cpu' in data:
+            prev_cpu = tuple(data['meta_cpu'])
+        if 'meta_cpu_detailed' in data:
+            prev_cpu_detailed = data['meta_cpu_detailed']
+        if 'meta_disk' in data:
+            prev_disk = data['meta_disk']
+        if 'meta_net' in data:
+            prev_net = data['meta_net']
+        if 'meta_ctxt' in data:
+            prev_ctxt = data['meta_ctxt']
+    
+    # Capture current sample with previous state for delta calculation
+    sample, cpu_state, cpu_detailed, disk_state, net_state, ctxt_state = collect_sample(
+        prev_cpu=prev_cpu,
+        prev_cpu_detailed=prev_cpu_detailed,
+        prev_disk=prev_disk,
+        prev_net=prev_net,
+        prev_ctxt=prev_ctxt
+    )
+    
+    # Store current state for next sample
+    data['meta_cpu'] = list(cpu_state) if cpu_state else None
+    data['meta_cpu_detailed'] = cpu_detailed
+    data['meta_disk'] = disk_state
+    data['meta_net'] = net_state
+    data['meta_ctxt'] = ctxt_state
     
     current_time = time.time()
     current_datetime = datetime.now().isoformat()
