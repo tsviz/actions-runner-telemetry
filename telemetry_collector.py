@@ -29,7 +29,7 @@ def get_cpu_usage():
         return 0, 1
 
 def get_memory_info():
-    """Get memory usage information."""
+    """Get memory usage information from system and process perspective."""
     try:
         with open('/proc/meminfo', 'r') as f:
             meminfo = {}
@@ -46,16 +46,34 @@ def get_memory_info():
             cached = meminfo.get('Cached', 0)
             used = total - available
             
+            # Get process RSS (what the current Python process is using)
+            process_rss_mb = 0
+            try:
+                with open(f'/proc/{os.getpid()}/status', 'r') as pf:
+                    for line in pf:
+                        if line.startswith('VmRSS:'):
+                            process_rss_mb = int(line.split()[1]) // 1024  # Convert KB to MB
+                            break
+            except:
+                pass
+            
+            # System memory usage EXCLUDING cache/buffers (actual allocations)
+            actual_used = used - buffers - cached
+            
             return {
                 'total_mb': total // 1024,
                 'used_mb': used // 1024,
+                'actual_used_mb': max(0, actual_used // 1024),  # Exclude cache/buffers
                 'available_mb': available // 1024,
                 'buffers_mb': buffers // 1024,
                 'cached_mb': cached // 1024,
-                'percent': round((used / total) * 100, 2) if total > 0 else 0
+                'process_rss_mb': process_rss_mb,
+                'percent': round((used / total) * 100, 2) if total > 0 else 0,
+                'actual_percent': round((actual_used / total) * 100, 2) if total > 0 else 0,
+                'process_percent': round((process_rss_mb * 1024 / total) * 100, 2) if total > 0 else 0
             }
     except:
-        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0, 'process_percent': 0}
 
 def get_disk_io():
     """Get disk I/O statistics."""
@@ -633,7 +651,8 @@ def mark_step(step_name):
             os.remove(temp_file)
         return
     
-    print(f"📍 Marked step: {step_name} (CPU: {sample['cpu_percent']:.1f}%, Mem: {sample['memory']['percent']:.1f}%)")
+    mem_pct = sample['memory'].get('process_percent', sample['memory']['percent'])
+    print(f"📍 Marked step: {step_name} (CPU: {sample['cpu_percent']:.1f}%, Mem: {mem_pct:.1f}%)")
     
     print(f"📍 Step marked: {step_name}")
 
@@ -672,7 +691,8 @@ def snapshot_collection():
             prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt
         )
         data['samples'].append(sample)
-        print(f'  Sample {i+1}/6: CPU={sample["cpu_percent"]:.1f}% MEM={sample["memory"]["percent"]:.1f}%')
+        mem_pct = sample['memory'].get('process_percent', sample['memory']['percent'])
+        print(f'  Sample {i+1}/6: CPU={sample["cpu_percent"]:.1f}% MEM={mem_pct:.1f}%')
         if i < 5:
             time.sleep(interval)
     

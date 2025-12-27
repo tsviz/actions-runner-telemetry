@@ -17,6 +17,12 @@ from pathlib import Path
 
 DATA_FILE = os.environ.get('TELEMETRY_DATA_FILE', '/tmp/telemetry_data.json')
 
+def get_memory_percent(sample):
+    """Get memory percent from sample, preferring process_percent for accuracy."""
+    mem = sample.get('memory', {})
+    # Use process_percent if available (tracks actual process memory), fall back to system percent
+    return mem.get('process_percent', mem.get('percent', 0))
+
 # Health thresholds
 THRESHOLDS = {
     'cpu_warning': 60,
@@ -185,7 +191,7 @@ def calculate_utilization_score(data):
     total_ram_mb = initial.get('memory', {}).get('total_mb', 7000)
     
     cpu_values = [s['cpu_percent'] for s in samples]
-    mem_values = [s['memory']['percent'] for s in samples]
+    mem_values = [get_memory_percent(s) for s in samples]
     
     avg_cpu = sum(cpu_values) / len(cpu_values)
     max_cpu = max(cpu_values)
@@ -804,7 +810,7 @@ def analyze_steps(data):
         
         if step_samples:
             cpu_values = [s['cpu_percent'] for s in step_samples]
-            mem_values = [s['memory']['percent'] for s in step_samples]
+            mem_values = [get_memory_percent(s) for s in step_samples]
             
             analyzed_step = {
                 'name': step['name'],
@@ -877,7 +883,7 @@ def generate_report(data):
     
     # Extract time series data
     cpu_values = [s['cpu_percent'] for s in samples]
-    mem_values = [s['memory']['percent'] for s in samples]
+    mem_values = [get_memory_percent(s) for s in samples]
     load_1m = [s['load']['load_1m'] for s in samples]
     disk_read = [s['disk_io']['read_rate'] / (1024*1024) for s in samples]
     disk_write = [s['disk_io']['write_rate'] / (1024*1024) for s in samples]
@@ -1204,7 +1210,7 @@ def generate_html_dashboard(data):
     start_time = data.get('start_time', 0)
     timestamps = [(s['timestamp'] - start_time) for s in samples]
     cpu_values = [s['cpu_percent'] for s in samples]
-    mem_values = [s['memory']['percent'] for s in samples]
+    mem_values = [get_memory_percent(s) for s in samples]
     load_values = [s['load']['load_1m'] for s in samples]
     disk_read = [s['disk_io']['read_rate'] / (1024*1024) for s in samples]
     disk_write = [s['disk_io']['write_rate'] / (1024*1024) for s in samples]
@@ -1481,7 +1487,7 @@ def export_csv_files(data, output_dir):
                     f"{s['timestamp']:.2f}",
                     f"{s['timestamp'] - start_time:.2f}",
                     f"{s['cpu_percent']:.2f}",
-                    f"{s['memory']['percent']:.2f}",
+                    f"{get_memory_percent(s):.2f}",
                     f"{s['memory']['used_mb']}",
                     f"{s['load']['load_1m']:.2f}",
                     f"{s['disk_io']['read_rate']:.0f}",
@@ -1500,7 +1506,7 @@ def export_csv_files(data, output_dir):
     json_path = os.path.join(output_dir, 'telemetry-summary.json')
     try:
         cpu_values = [s['cpu_percent'] for s in samples]
-        mem_values = [s['memory']['percent'] for s in samples]
+        mem_values = [get_memory_percent(s) for s in samples]
         load_values = [s['load']['load_1m'] for s in samples]
         
         summary = {
@@ -1617,7 +1623,7 @@ def main():
     print(f"   Samples: {len(data.get('samples', []))}")
     if data.get('samples'):
         cpu_vals = [s['cpu_percent'] for s in data['samples']]
-        mem_vals = [s['memory']['percent'] for s in data['samples']]
+        mem_vals = [get_memory_percent(s) for s in data['samples']]
         print(f"   CPU: avg={sum(cpu_vals)/len(cpu_vals):.1f}%, max={max(cpu_vals):.1f}%")
         print(f"   Memory: avg={sum(mem_vals)/len(mem_vals):.1f}%, max={max(mem_vals):.1f}%")
     print("="*60)
