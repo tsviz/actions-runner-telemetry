@@ -280,9 +280,8 @@ jobs:
           print(f"   Total result: {total_result}")
           print(f"✅ Heavy workload finished - high CPU + sustained memory")
           PYTHON_EOF
-          
 
-      # Mark major work sections
+      # Mark end of heavy workload / begin data processing
       - name: '[Telemetry] Data Processing'
         uses: tsviz/actions-runner-telemetry@v1
         with:
