@@ -269,7 +269,7 @@ jobs:
           python3 << 'PYTHON_EOF'
           import sys
           import os
-          sys.path.insert(0, "/")
+          sys.path.insert(0, "${{ github.workspace }}")
           from telemetry_collector import mark_step
           
           import time
