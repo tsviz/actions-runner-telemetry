@@ -588,6 +588,26 @@ GitHub hosted runners are cost-effective when properly utilized:
             current_runner_type=current_runner
         )
         
+        # FORCE upgrade if still not possible and current is small runner
+        if not upgrade_rec['is_upgrade_possible']:
+            current_specs = GITHUB_RUNNERS.get(current_runner, {})
+            current_cores = current_specs.get('vcpus', 2)
+            # If current is 2-core and not marked as upgrade possible, force it
+            if current_cores <= 2:
+                if 'windows' in current_runner.lower():
+                    upgrade_rec['recommended'] = 'windows-4-core'
+                elif 'macos' in current_runner.lower():
+                    upgrade_rec['recommended'] = 'macos-13-large'
+                else:
+                    upgrade_rec['recommended'] = 'linux-4-core'
+                # Recalculate specs for forced upgrade
+                new_specs = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
+                upgrade_rec['cores'] = new_specs.get('vcpus', 4)
+                upgrade_rec['ram_gb'] = new_specs.get('ram_gb', 16)
+                upgrade_rec['name'] = new_specs.get('name', 'linux-4-core')
+                upgrade_rec['cost_per_min'] = new_specs.get('cost_per_min', 0.012)
+                upgrade_rec['is_upgrade_possible'] = True
+        
         # Check if upgrade is actually possible
         # For custom runners (not in GITHUB_RUNNERS), skip standard upgrade recommendations
         is_custom_runner = upgrade_rec['recommended'] not in GITHUB_RUNNERS
