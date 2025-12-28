@@ -189,8 +189,6 @@ def detect_runner_type(data):
         # Fallback to CPU-based detection for standard runners
         if cpu_count <= 1:
             return 'ubuntu-slim'
-        else:
-            return 'ubuntu-latest'
         elif cpu_count >= 8:
             return 'linux-8-core'
         elif cpu_count >= 4:
