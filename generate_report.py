@@ -964,25 +964,28 @@ def generate_report(data):
         "Available": 100 - avg_mem,
     })
     
-    # Create time series chart with every 6-second interval for clean labels
+    # Create time series chart with downsampling for readability
     sample_count = len(samples)
     interval = data.get("interval", 2)
     
-    # Calculate indices for every 6 seconds (or skip if interval is different)
-    label_interval_seconds = 6
-    label_step = max(1, int(label_interval_seconds / interval))
+    # Downsample data for Mermaid chart to max 50 points (Mermaid rendering limit)
+    max_mermaid_points = 50
+    mermaid_step = max(1, math.ceil(sample_count / max_mermaid_points))
     
-    # Build label indices starting from 0 and going to end
-    label_indices = list(range(0, sample_count, label_step))
-    if label_indices[-1] != sample_count - 1:
-        label_indices.append(sample_count - 1)
+    # Get downsampled data while preserving max values
+    downsampled_indices = list(range(0, sample_count, mermaid_step))
+    if sample_count - 1 not in downsampled_indices:
+        downsampled_indices.append(sample_count - 1)
     
-    # Generate labels for every 6-second point
-    x_labels = [f'"{int(i * interval)}"' for i in label_indices]
+    downsampled_cpu = [cpu_values[i] for i in downsampled_indices]
+    downsampled_mem = [mem_values[i] for i in downsampled_indices]
     
-    # All data points for smooth lines
-    all_cpu_str = ", ".join([f"{v:.1f}" for v in cpu_values])
-    all_mem_str = ", ".join([f"{v:.1f}" for v in mem_values])
+    # Generate time labels for downsampled points
+    x_labels = [f'"{int(downsampled_indices[i] * interval)}"' for i in range(len(downsampled_indices))]
+    
+    # Downsampled data for smooth lines (Mermaid chart)
+    all_cpu_str = ", ".join([f"{v:.1f}" for v in downsampled_cpu])
+    all_mem_str = ", ".join([f"{v:.1f}" for v in downsampled_mem])
     
     xy_chart = ""
     if len(x_labels) >= 2:
