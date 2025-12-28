@@ -509,9 +509,11 @@ def generate_utilization_section(data, analyzed_steps=None):
 > | **Per Run** | ${cost_analysis['current_cost']:.4f} | ${cost_analysis['current_cost'] - cost_analysis['potential_savings']:.4f} | **${cost_analysis['potential_savings']:.4f}** ({savings_pct:.0f}%) |
 > | **Monthly** | ${cost_analysis['monthly_cost']:.2f} | ${cost_analysis['monthly_cost'] - cost_analysis['monthly_savings']:.2f} | **${cost_analysis['monthly_savings']:.2f}** |
 >
-> **Action:** Change `runs-on:` to `{cost_analysis['right_sized_runner']}` in your workflow
+> To make this change, update your workflow's `runs-on:` configuration.
 >
-> **Learn more:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+> **Learn more:** 
+> - [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+> - [Manage Larger Runners](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/larger-runners/manage-larger-runners)
 
 '''
         
