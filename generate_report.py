@@ -161,20 +161,36 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
 def detect_runner_type(data):
-    """Detect the runner type from the data based on OS and CPU count."""
+    """Detect the runner type from the data based on OS and CPU count.
+    
+    Returns either a known GitHub runner type (e.g. 'ubuntu-latest') or 
+    a special marker like 'custom-linux-8core' for self-hosted runners.
+    """
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
     runner_name = ctx.get('runner_name', '').lower()
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
     
-    # Detect based on runner name if available (custom runners)
+    # Detect based on runner name if available
+    # Custom runner names won't match known GitHub runners, so mark them as custom
+    is_custom_runner = runner_name and runner_name not in GITHUB_RUNNERS
+    
     if 'linux' in runner_os:
-        # Check for custom/larger runners
-        if 'linux8' in runner_name or '8' in runner_name and cpu_count == 8:
-            return 'linux-8-core'  # Generic 8-core marker
-        elif 'linux4' in runner_name or '4' in runner_name and cpu_count == 4:
-            return 'linux-4-core'  # Generic 4-core marker
+        # If it's a known GitHub runner, use it
+        if runner_name in GITHUB_RUNNERS:
+            return runner_name
+        
+        # If it's a custom/self-hosted runner, mark it as such
+        if is_custom_runner:
+            # Use the actual runner name as the identifier (e.g. 'tsvi-linux8cores')
+            return runner_name  # Will be identified as custom in later checks
+        
+        # Fallback to CPU-based detection for standard runners
+        if cpu_count <= 1:
+            return 'ubuntu-slim'
+        else:
+            return 'ubuntu-latest'
         elif cpu_count >= 8:
             return 'linux-8-core'
         elif cpu_count >= 4:
@@ -548,7 +564,10 @@ GitHub hosted runners are cost-effective when properly utilized:
         )
         
         # Check if upgrade is actually possible
-        if upgrade_rec['is_upgrade_possible']:
+        # For custom runners (not in GITHUB_RUNNERS), skip standard upgrade recommendations
+        is_custom_runner = upgrade_rec['recommended'] not in GITHUB_RUNNERS
+        
+        if upgrade_rec['is_upgrade_possible'] and not is_custom_runner:
             # Show upgrade recommendation
             recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
             current_cost_per_min = upgrade_rec['current_cost_per_min']
@@ -654,21 +673,54 @@ Your job is **straining resources** on the current runner:
 {upgrade_note}{plan_note}
 
 **How to Switch:**
-In your workflow, change:
-```yaml
-runs-on: {current_runner}
-```
-to:
-```yaml
-runs-on: {upgrade_rec['recommended']}
-```
 
-**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+**Note:** Larger runners require a GitHub Team or GitHub Enterprise Cloud plan and must be set up by your organization administrator.
+
+For setup instructions, see: [GitHub Actions - Manage Larger Runners](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/larger-runners/manage-larger-runners)
+
+For pricing details, see: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
         else:
-            # No upgrade available - show optimization strategies
-            if current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
+            # No standard upgrade available, or this is a custom runner
+            # For custom runners, recommend contacting org admin to increase resources
+            if is_custom_runner:
+                section += f'''
+**Priority: Contact Your Organization ⚠️**
+
+Your job is **straining resources** on the custom runner **`{current_runner}`**:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+**Recommendation:** Contact your organization administrator to:
+1. Increase the resources (CPU cores / RAM) allocated to this runner
+2. Create a larger runner specifically for high-resource workloads
+3. Distribute your workload across multiple runners using workflow matrix
+
+**In the meantime, optimize your build:**
+
+1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix:
+   ```yaml
+   strategy:
+     matrix:
+       shard: [1, 2, 3, 4]
+   ```
+
+2. **Improve caching** - Cache dependencies to reduce build time
+
+3. **Profile slow steps** - Identify and optimize bottlenecks
+
+4. **Run targeted tests** - Only test changed modules, not full suite
+
+**Your Runner Details:**
+- Name: `{current_runner}`
+- CPU Cores: {utilization['total_cpu_cores']}
+- Total RAM: {utilization['total_ram_gb']:.1f} GB
+
+**For your organization admin:** This runner needs upgrade due to consistent 95%+ utilization during regular workloads.
+
+'''
+            elif current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
                 section += f'''
 **Priority: Optimize Build (or Upgrade to Larger Runner) ⚠️**
 
