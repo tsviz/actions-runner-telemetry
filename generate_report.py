@@ -382,7 +382,18 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
         'macos-latest-large': 'macos-latest-xlarge',
     }
     
-    recommended = upgrade_paths.get(current_runner_type, 'ubuntu-latest')
+    recommended = upgrade_paths.get(current_runner_type, None)
+    
+    # If upgrade path not found, try to intelligently suggest one
+    if recommended is None:
+        # Fallback: for any 2-core runner, suggest 4-core
+        if 'windows' in current_runner_type.lower():
+            recommended = 'windows-4-core'
+        elif 'macos' in current_runner_type.lower():
+            recommended = 'macos-13-large'
+        else:
+            # Default to linux 4-core for unknown runners
+            recommended = 'linux-4-core'
     
     # Get current and recommended runner specs
     current_specs = GITHUB_RUNNERS.get(current_runner_type, {})
@@ -397,20 +408,19 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     # Check if upgrade is actually possible (recommended != current)
     is_upgrade_possible = recommended != current_runner_type
     
-    # Fallback: if upgrade mapping failed, try to find next size up
-    if not is_upgrade_possible:
-        # For standard runners (2-core), always recommend 4-core if overutilized
-        if current_runner_type in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04', 'windows-latest', 'windows-2025', 'windows-2022']:
-            # These are 2-core standard runners, recommend 4-core versions
-            if 'ubuntu' in current_runner_type:
-                recommended = 'linux-4-core'
-            elif 'windows' in current_runner_type:
-                recommended = 'windows-4-core'
-            # Re-fetch recommended specs with new value
-            recommended_specs = GITHUB_RUNNERS.get(recommended, {})
-            recommended_cores = recommended_specs.get('vcpus', 2)
-            recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
-            is_upgrade_possible = recommended != current_runner_type
+    # Additional fallback: if current is 2-core and recommended is also 2-core, force 4-core upgrade
+    if not is_upgrade_possible and current_cores <= 2:
+        # Current is a 2-core runner but couldn't find upgrade path
+        # Force upgrade to 4-core variant
+        if 'ubuntu' in current_runner_type.lower():
+            recommended = 'linux-4-core'
+        elif 'windows' in current_runner_type.lower():
+            recommended = 'windows-4-core'
+        # Re-fetch specs
+        recommended_specs = GITHUB_RUNNERS.get(recommended, {})
+        recommended_cores = recommended_specs.get('vcpus', 2)
+        recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
+        is_upgrade_possible = recommended != current_runner_type
     
     # Calculate speedup factor
     # Realistic speedup: assume near-linear scaling, but cap at 3x (diminishing returns)
