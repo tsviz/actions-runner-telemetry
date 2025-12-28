@@ -161,16 +161,40 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
 def detect_runner_type(data):
-    """Detect the runner type from the data."""
+    """Detect the runner type from the data based on OS and CPU count."""
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
+    runner_name = ctx.get('runner_name', '').lower()
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
     
-    if 'windows' in runner_os:
-        return 'windows-latest'
+    # Detect based on runner name if available (custom runners)
+    if 'linux' in runner_os:
+        # Check for custom/larger runners
+        if 'linux8' in runner_name or '8' in runner_name and cpu_count == 8:
+            return 'linux-8-core'  # Generic 8-core marker
+        elif 'linux4' in runner_name or '4' in runner_name and cpu_count == 4:
+            return 'linux-4-core'  # Generic 4-core marker
+        elif cpu_count >= 8:
+            return 'linux-8-core'
+        elif cpu_count >= 4:
+            return 'linux-4-core'
+        else:
+            return 'ubuntu-latest'
+    elif 'windows' in runner_os:
+        if cpu_count >= 8:
+            return 'windows-8-core'
+        elif cpu_count >= 4:
+            return 'windows-4-core'
+        else:
+            return 'windows-latest'
     elif 'macos' in runner_os:
-        return 'macos-latest'
+        if cpu_count >= 12:
+            return 'macos-13-large'
+        elif cpu_count >= 5:
+            return 'macos-latest-xlarge'
+        else:
+            return 'macos-latest'
     else:
         return 'ubuntu-latest'
 
@@ -455,8 +479,11 @@ def generate_utilization_section(data, analyzed_steps=None):
 
 '''
         
-        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type']:
-            right_specs = GITHUB_RUNNERS[cost_analysis['right_sized_runner']]
+        # Only recommend right-sizing if runner is UNDER-utilized (avg < 40%)
+        # Do NOT recommend downgrading if over-utilized (that's handled by upgrade recommendations)
+        is_underutilized = (utilization['avg_cpu_pct'] < 40 and utilization['avg_mem_pct'] < 40)
+        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and is_underutilized:
+            right_specs = GITHUB_RUNNERS.get(cost_analysis['right_sized_runner'], GITHUB_RUNNERS['ubuntu-latest'])
             savings_pct = (cost_analysis['potential_savings'] / cost_analysis['current_cost'] * 100) if cost_analysis['current_cost'] > 0 else 0
             section += f'''
 > 💡 **Optimization Opportunity: Right-Size Your Runner**
