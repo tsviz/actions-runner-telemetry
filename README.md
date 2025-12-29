@@ -1,6 +1,8 @@
 # 🖥️ Runner Telemetry Action
 
 [![Telemetry E2E](https://github.com/tsviz/actions-runner-telemetry/actions/workflows/telemetry-e2e.yml/badge.svg?branch=main)](https://github.com/tsviz/actions-runner-telemetry/actions/workflows/telemetry-e2e.yml)
+[![Latest tag](https://img.shields.io/github/v/tag/tsviz/actions-runner-telemetry?label=latest%20tag&sort=semver)](https://github.com/tsviz/actions-runner-telemetry/tags)
+[![Use this action](https://img.shields.io/badge/uses-tsviz/actions--runner--telemetry%40v1-blue)](https://github.com/tsviz/actions-runner-telemetry#quick-start)
 
 See what's actually happening in your GitHub Actions workflows. This action monitors CPU, memory, disk I/O, and processes—then shows you a detailed report right in your workflow summary. 
 

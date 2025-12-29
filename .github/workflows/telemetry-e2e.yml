@@ -10,8 +10,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # NOTE: Linux-only for now. The collector reads /proc and Linux-specific paths.
+        # TODO: Expand to [windows-latest, macos-latest] once telemetry_collector.py supports non-Linux metrics.
         os: [ubuntu-latest]
-        # TODO: add windows-latest, macos-latest after cross-OS metrics support
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
