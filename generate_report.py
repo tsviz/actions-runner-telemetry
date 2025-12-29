@@ -219,16 +219,19 @@ def detect_runner_type(data):
         memory_diff = abs(spec_memory - memory_gb)
         
         # Lower score = better match
-        # Weight core matching more heavily than memory (2x weight)
-        match_score = (core_diff * 2) + (memory_diff * 0.5)
+        # Weight core matching more heavily than memory (3x weight on exact core matches)
+        # If cores match exactly, heavily favor that runner
+        if core_diff == 0:
+            match_score = memory_diff * 0.1  # Cores match exactly, just fine-tune with memory
+        else:
+            match_score = (core_diff * 3) + (memory_diff * 0.5)
         
         if match_score < best_match_score:
             best_match_score = match_score
             best_match = runner_key
     
-    # If we found a good match (score < 10), return it
-    # This allows for slight variations in memory
-    if best_match and best_match_score < 10:
+    # If we found a good match (score < 15 allows for some variance), return it
+    if best_match and best_match_score < 15:
         return best_match
     
     # Fallback: determine runner by CPU cores if no good match found
