@@ -12,14 +12,36 @@ export TELEMETRY_DATA_FILE
 export TELEMETRY_INTERVAL="$INTERVAL"
 export REPO_VISIBILITY="$REPO_VISIBILITY"
 
-# Auto-detect repository visibility if needed (for cost analysis)
+# Set repository visibility for cost analysis
+# Note: GITHUB_REPOSITORY_VISIBILITY is NOT automatically available in action context
+# Users can explicitly pass it via the repo-visibility input, or we'll try to detect it
 if [ "$REPO_VISIBILITY" = "auto" ]; then
-  # Try to detect using GitHub CLI if available
-  if command -v gh &> /dev/null; then
-    DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate | if . then "private" else "public" end' 2>/dev/null || echo "private")
-    export GITHUB_REPOSITORY_VISIBILITY="$DETECTED_VISIBILITY"
+  # Try to detect using GitHub API
+  if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPOSITORY" ]; then
+    # Use API to check if repo is private
+    API_RESPONSE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+      "https://api.github.com/repos/$GITHUB_REPOSITORY" 2>/dev/null | grep -o '"private":[^,}]*' || echo "")
+    
+    if echo "$API_RESPONSE" | grep -q "true"; then
+      export GITHUB_REPOSITORY_VISIBILITY="private"
+    elif echo "$API_RESPONSE" | grep -q "false"; then
+      export GITHUB_REPOSITORY_VISIBILITY="public"
+    else
+      # API call failed, try gh CLI as fallback
+      if command -v gh &> /dev/null; then
+        DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate | if . then "private" else "public" end' 2>/dev/null || echo "")
+        if [ -n "$DETECTED_VISIBILITY" ]; then
+          export GITHUB_REPOSITORY_VISIBILITY="$DETECTED_VISIBILITY"
+        else
+          export GITHUB_REPOSITORY_VISIBILITY="private"
+        fi
+      else
+        # No detection available - default to private for safety
+        export GITHUB_REPOSITORY_VISIBILITY="private"
+      fi
+    fi
   else
-    # Fallback: GitHub's GITHUB_REPOSITORY environment doesn't include visibility
+    # No GITHUB_TOKEN or GITHUB_REPOSITORY - can't auto-detect
     # Default to private for safety in cost calculations
     export GITHUB_REPOSITORY_VISIBILITY="private"
   fi

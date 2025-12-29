@@ -452,16 +452,6 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     repo_visibility_value = get_repo_visibility_from_data(data)
     is_public_repo = (repo_visibility_value == 'public')
     
-    # DEBUG: Print visibility detection info
-    ctx = data.get('github_context', {})
-    captured = ctx.get('repository_visibility', 'NOT_SET')
-    env_var = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'NOT_SET')
-    print(f"[DEBUG] Visibility Detection:")
-    print(f"  Captured in telemetry: {captured}")
-    print(f"  GITHUB_REPOSITORY_VISIBILITY env: {env_var}")
-    print(f"  Determined visibility: {repo_visibility_value}")
-    print(f"  Is public repo: {is_public_repo}")
-    
     # Detect runner type, preferring standard runners for public repos
     detected_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
     runner_type = detected_runner_type
