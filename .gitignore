@@ -19,3 +19,5 @@ telemetry-report.md
 step-summary.md
 
 # Local test scripts (kept; ignore changes to outputs rather than scripts)
+test_local.sh
+test_simulation.sh
