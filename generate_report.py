@@ -41,11 +41,16 @@ THRESHOLDS = {
 # - GitHub Team/Enterprise Cloud: Larger runners available (4-core, 8-core, etc.)
 # Larger runners are marked with 'is_larger': True flag.
 GITHUB_RUNNERS = {
-    # Standard Linux runners (free tier, all repositories)
-    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 5, 'cost_per_min': 0.002, 'storage_gb': 14, 'name': 'Linux 1-core (ubuntu-slim)', 'sku': 'linux_slim'},
-    'ubuntu-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-latest)', 'sku': 'linux'},
-    'ubuntu-24.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-24.04)', 'sku': 'linux'},
-    'ubuntu-22.04': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.006, 'storage_gb': 14, 'name': 'Linux 2-core (ubuntu-22.04)', 'sku': 'linux'},
+    # Standard Linux runners
+    # NOTE: Specs vary by repo visibility:
+    # - Public repos: 4 cores, 16GB RAM (free)
+    # - Private repos: 2 cores, 7GB RAM (paid, $0.006/min)
+    # The specs below are for PUBLIC repos (larger resources, zero cost).
+    # For private repos, adjust the cost_per_min based on repo visibility.
+    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 5, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 1-core (ubuntu-slim)', 'sku': 'linux_slim', 'is_free_public': True},
+    'ubuntu-latest': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-latest)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
+    'ubuntu-24.04': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-24.04)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
+    'ubuntu-22.04': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-22.04)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
     
     # Larger Linux x64 runners (GitHub Team/Enterprise Cloud)
     'linux-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 14, 'name': 'Linux 4-core Larger Runner', 'sku': 'linux_4_core', 'is_larger': True},
@@ -55,10 +60,13 @@ GITHUB_RUNNERS = {
     'linux-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core Larger Runner', 'sku': 'linux_4_core_arm', 'is_larger': True},
     'linux-8-core-arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Linux ARM 8-core Larger Runner', 'sku': 'linux_8_core_arm', 'is_larger': True},
     
-    # Standard Windows runners (free tier, all repositories)
-    'windows-latest': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-latest)', 'sku': 'windows'},
-    'windows-2025': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-2025)', 'sku': 'windows'},
-    'windows-2022': {'vcpus': 2, 'ram_gb': 7, 'cost_per_min': 0.010, 'storage_gb': 14, 'name': 'Windows 2-core (windows-2022)', 'sku': 'windows'},
+    # Standard Windows runners
+    # NOTE: Specs vary by repo visibility:
+    # - Public repos: 4 cores, 16GB RAM (free)
+    # - Private repos: 2 cores, 7GB RAM (paid, $0.010/min)
+    'windows-latest': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-latest)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
+    'windows-2025': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-2025)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
+    'windows-2022': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-2022)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
     
     # Larger Windows x64 runners (GitHub Team/Enterprise Cloud)
     'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Windows 4-core Larger Runner', 'sku': 'windows_4_core', 'is_larger': True},
@@ -430,7 +438,17 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     detected_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
     runner_type = detected_runner_type
     
-    runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest'])
+    runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest']).copy()
+    
+    # For private repos with free public runners, use the private specs and cost
+    if not is_public_repo and runner_specs.get('is_free_public'):
+        # Override specs and cost for private repo
+        runner_specs['vcpus'] = runner_specs.get('private_vcpus', runner_specs['vcpus'])
+        runner_specs['ram_gb'] = runner_specs.get('private_ram_gb', runner_specs['ram_gb'])
+        runner_specs['cost_per_min'] = runner_specs.get('private_cost_per_min', runner_specs['cost_per_min'])
+        # Update name to reflect private repo specs
+        if 'name' in runner_specs and '4-core' in runner_specs['name']:
+            runner_specs['name'] = runner_specs['name'].replace('4-core', '2-core')
     
     current_cost = duration_minutes * runner_specs['cost_per_min']
     
