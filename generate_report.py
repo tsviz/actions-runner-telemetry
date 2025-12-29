@@ -469,7 +469,6 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     return {
         'runner_type': runner_type,
         'detected_runner_type': detected_runner_type,  # Include detected type for reference
-        'requested_runner_name': requested_runner_name,
         'runner_specs': runner_specs,
         'duration_minutes': duration_minutes,
         'current_cost': current_cost,
