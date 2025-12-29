@@ -22,10 +22,6 @@ inputs:
     description: "Repository visibility: 'public' (standard runners are free), 'private' (standard runners cost money), or 'auto' (auto-detect from GitHub context). Affects cost analysis and billing context in reports."
     required: false
     default: "auto"
-  runner-label:
-    description: "Override the requested runner label (e.g., 'ubuntu-latest', 'linux-4-core'). If not provided, auto-detects from actual system specs. Use this to clarify your intended runner for accurate cost analysis."
-    required: false
-    default: ""
 outputs:
   report-path:
     description: "Path to the generated markdown telemetry report"

@@ -7,12 +7,10 @@ MODE="${INPUT_MODE:-auto}"
 INTERVAL="${INPUT_INTERVAL:-2}"
 STEP_NAME="${INPUT_STEP_NAME:-}"
 REPO_VISIBILITY="${INPUT_REPO_VISIBILITY:-auto}"
-RUNNER_LABEL="${INPUT_RUNNER_LABEL:-}"
 TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE:-/github/workspace}/.telemetry_data.json"
 export TELEMETRY_DATA_FILE
 export TELEMETRY_INTERVAL="$INTERVAL"
 export REPO_VISIBILITY="$REPO_VISIBILITY"
-export RUNNER_LABEL="$RUNNER_LABEL"
 
 # Auto-detect repository visibility if needed (for cost analysis)
 if [ "$REPO_VISIBILITY" = "auto" ]; then

@@ -250,12 +250,17 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
     else:
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
-def detect_runner_type(data):
+def detect_runner_type(data, is_public_repo=None):
     """Detect the runner type by matching actual system specs to known GitHub runners.
     
     Uses CPU cores, memory, and OS to find the best match in GITHUB_RUNNERS.
     Returns either a known GitHub runner key (e.g. 'linux-4-core') or 
     a custom runner identifier for self-hosted runners.
+    
+    Args:
+        data: Telemetry data dict
+        is_public_repo: Optional bool. If True, prefer standard runners for public repos
+                        (since GitHub gives standard runners even if HW has more cores)
     """
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
@@ -283,6 +288,10 @@ def detect_runner_type(data):
     best_match_score = float('inf')
     
     for runner_key, specs in GITHUB_RUNNERS.items():
+        # For public repos, skip larger runners - assume standard runner if it's the best match
+        if is_public_repo and specs.get('is_larger'):
+            continue
+        
         # Match by SKU prefix (e.g., 'linux', 'windows', 'macos')
         sku = specs.get('sku', '')
         spec_cores = specs.get('vcpus', 2)
@@ -325,15 +334,24 @@ def detect_runner_type(data):
         return best_match
     
     # Fallback: determine runner by CPU cores if no good match found
+    # For public repos, default to standard runners
     if 'linux' in runner_os:
-        if cpu_count <= 1:
-            return 'ubuntu-slim'
-        elif cpu_count >= 8:
-            return 'linux-8-core'
-        elif cpu_count >= 4:
-            return 'linux-4-core'
+        if is_public_repo:
+            # Public repos get standard runners - default to ubuntu-latest
+            if cpu_count <= 1:
+                return 'ubuntu-slim'
+            else:
+                return 'ubuntu-latest'
         else:
-            return 'ubuntu-latest'
+            # Private repos could be using larger runners
+            if cpu_count <= 1:
+                return 'ubuntu-slim'
+            elif cpu_count >= 8:
+                return 'linux-8-core'
+            elif cpu_count >= 4:
+                return 'linux-4-core'
+            else:
+                return 'ubuntu-latest'
     elif 'windows' in runner_os:
         if cpu_count >= 8:
             return 'windows-8-core'
@@ -394,22 +412,23 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     duration_seconds = data.get('duration', 0)
     duration_minutes = max(1, math.ceil(duration_seconds / 60))  # GitHub rounds up to nearest minute
     
-    # Use requested runner name for billing (what they asked for)
-    # Priority: explicitly provided RUNNER_LABEL env var > GitHub context runner_name > detected type
+    # Determine repo visibility for runner detection
     ctx = data.get('github_context', {})
+    repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
     
-    # Check for explicitly provided runner label (from action input)
-    explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
-    requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '').lower()
-    detected_runner_type = detect_runner_type(data)
-    
-    # Determine the billing runner type
-    if requested_runner_name and requested_runner_name in GITHUB_RUNNERS:
-        # They explicitly requested a specific runner (e.g., linux-4-core or ubuntu-latest)
-        runner_type = requested_runner_name
+    # Determine if public or private repo
+    if repo_visibility == 'public':
+        is_public_repo = True
+    elif repo_visibility == 'private':
+        is_public_repo = False
     else:
-        # Use detected type
-        runner_type = detected_runner_type
+        # Auto-detect: check GitHub's environment variable
+        github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+        is_public_repo = (github_repo_visibility == 'public')
+    
+    # Detect runner type, preferring standard runners for public repos
+    detected_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
+    runner_type = detected_runner_type
     
     runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest'])
     
@@ -669,9 +688,6 @@ def generate_utilization_section(data, analyzed_steps=None):
     if cost_analysis:
         # Determine if current runner is free or paid
         ctx = data.get('github_context', {})
-        # Check for explicitly provided runner label first (from action input)
-        explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
-        requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '')
         repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
         
         # Determine if public or private repo
@@ -684,7 +700,7 @@ def generate_utilization_section(data, analyzed_steps=None):
             github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
             is_public_repo = (github_repo_visibility == 'public')
         
-        is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo, requested_runner_name=requested_runner_name)
+        is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo)
         
         # Skip cost analysis for free runners - cost analysis doesn't apply when price is $0
         if not is_free:
@@ -776,7 +792,18 @@ GitHub hosted runners are cost-effective when properly utilized:
     if is_overutilized:
         # Get specific runner recommendation (respecting OS/architecture)
         duration_sec = data.get('duration', 0)
-        current_runner = detect_runner_type(data)
+        
+        # Determine repo visibility for accurate detection
+        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
+        if repo_visibility == 'public':
+            is_public_repo = True
+        elif repo_visibility == 'private':
+            is_public_repo = False
+        else:
+            github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+            is_public_repo = (github_repo_visibility == 'public')
+        
+        current_runner = detect_runner_type(data, is_public_repo=is_public_repo)
         
         upgrade_rec = recommend_runner_upgrade(
             utilization['max_cpu_pct'],
@@ -879,12 +906,18 @@ GitHub hosted runners are cost-effective when properly utilized:
             total_hidden_value = hidden_value_saved + timeout_savings
             
             # Get billing context - are we upgrading from free to paid?
-            current_runner_type = detect_runner_type(data)
-            ctx = data.get('github_context', {})
-            # Check for explicitly provided runner label first (from action input)
-            explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
-            requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '')  # What they requested in runs-on:
-            billing_context = get_runner_billing_context(current_runner_type, requested_runner_name=requested_runner_name)
+            # Determine repo visibility for accurate billing detection
+            repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
+            if repo_visibility == 'public':
+                is_public_repo = True
+            elif repo_visibility == 'private':
+                is_public_repo = False
+            else:
+                github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+                is_public_repo = (github_repo_visibility == 'public')
+            
+            current_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
+            billing_context = get_runner_billing_context(current_runner_type)
             current_is_free = billing_context['is_free']
             new_is_free = is_runner_free(upgrade_rec['recommended'])
             
