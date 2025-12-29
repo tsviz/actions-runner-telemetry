@@ -98,6 +98,75 @@ UTILIZATION_THRESHOLDS = {
     'poor': 0,        # <30% = poor (wasting resources)
 }
 
+# Free (public repo) runner labels - these are free on public repos
+FREE_RUNNER_LABELS = {
+    'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
+    'windows-latest', 'windows-2025', 'windows-2022',
+    'macos-latest', 'macos-14', 'macos-15', 'macos-26',
+    'macos-13', 'macos-15-intel',
+    'ubuntu-slim', 'ubuntu-24.04-arm', 'ubuntu-22.04-arm',
+    'windows-11-arm'
+}
+
+def is_runner_free(runner_type, is_public_repo=None):
+    """Determine if a runner is free to use (public repo on standard runner).
+    
+    Args:
+        runner_type: The detected runner type name (e.g., 'ubuntu-latest', 'linux-4-core')
+        is_public_repo: Optional boolean. If None, auto-detect from GitHub context.
+    
+    Returns:
+        True if runner is free, False if paid.
+    """
+    # Auto-detect repo visibility from GitHub context if not provided
+    if is_public_repo is None:
+        # Check environment variables set by GitHub Actions
+        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto')
+        if repo_visibility == 'public':
+            is_public_repo = True
+        elif repo_visibility == 'private':
+            is_public_repo = False
+        else:
+            # Default to private (safer assumption - assumes cost)
+            is_public_repo = False
+    
+    # Larger runners and custom runners are always paid
+    if runner_type in ['linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
+                       'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
+                       'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
+                       'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge']:
+        return False
+    
+    # Standard runners are free only on public repos
+    if is_public_repo and runner_type in FREE_RUNNER_LABELS:
+        return True
+    
+    return False
+
+def get_runner_billing_context(runner_type, is_public_repo=None):
+    """Get billing information for the runner context.
+    
+    Returns:
+        dict with keys: is_free, is_paid, repo_type, recommendation_type
+    """
+    is_free = is_runner_free(runner_type, is_public_repo)
+    
+    if is_public_repo is None:
+        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto')
+        if repo_visibility == 'public':
+            is_public_repo = True
+        elif repo_visibility == 'private':
+            is_public_repo = False
+        else:
+            is_public_repo = False
+    
+    return {
+        'is_free': is_free,
+        'is_paid': not is_free,
+        'repo_type': 'public' if is_public_repo else 'private',
+        'recommendation_type': 'speed' if is_free else 'cost-savings'
+    }
+
 def get_health_status(value, warning_threshold, critical_threshold):
     """Get health status and icon based on value."""
     if value >= critical_threshold:
@@ -734,8 +803,27 @@ GitHub hosted runners are cost-effective when properly utilized:
             
             total_hidden_value = hidden_value_saved + timeout_savings
             
+            # Get billing context - are we upgrading from free to paid?
+            current_runner_type = detect_runner_type(data)
+            billing_context = get_runner_billing_context(current_runner_type)
+            current_is_free = billing_context['is_free']
+            new_is_free = is_runner_free(upgrade_rec['recommended'])
+            
             # Value messaging - emphasize the speedup benefit AND hidden costs
-            if cost_diff < 0:
+            # Special case: upgrading from free to paid runner - don't claim cost savings
+            if current_is_free and not new_is_free:
+                # Public repo on free runner → upgrading to paid larger runner
+                # Cannot claim "cost savings" because going from $0 to >$0
+                upgrade_note = f'''**💡 Performance Improvement Available:** {speedup_factor:.1f}x faster execution on a paid larger runner.
+
+**Developer productivity value:** {time_saved_per_month_hours:.1f} hours/month saved = **${hidden_value_saved:.0f}/month**
+
+**Reliability improvements:** Fewer timeouts saves ~{timeout_savings:.0f}/month {timeout_assumptions}
+
+**Total hidden value: ~${total_hidden_value:.0f}/month** in productivity and reliability.
+
+**Note:** You're currently using a free runner (public repo benefit). This recommendation requires switching to a paid larger runner.'''
+            elif cost_diff < 0:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
                 upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
             elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
@@ -759,7 +847,22 @@ Your job is **straining resources** on the current runner:
 **Expected Performance:** {upgrade_rec['speedup_estimate']} (upgrade from {upgrade_rec['cores'] / speedup_factor:.0f} to {upgrade_rec['cores']} cores)
 
 **Cost Impact (accounting for faster execution):**
-- Current: ${current_run_cost:.4f}/run ({duration_min:.0f} min @ ${current_cost_per_min:.4f}/min)
+'''
+            
+            # Different cost display based on billing context
+            if current_is_free and not new_is_free:
+                section += f'''- **Current: FREE** (0 min @ $0.00/min on public repository)
+- **Recommended: ${new_run_cost:.4f}/run** (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
+- **Additional cost per run: +${new_run_cost:.4f}**
+
+**Monthly Cost Comparison** (if you run 10 times/day, 300 runs/month):
+- **Current: FREE** ($0/month on free tier)
+- **Recommended: ${new_monthly:.2f}/month** (${new_run_cost:.4f}/run × 300 runs)
+
+⚠️ **Important Trade-off:** You're currently using GitHub's free runners available to public repositories. Upgrading to a larger runner means incurring costs, but you gain significant speed and reliability benefits listed above.
+'''
+            else:
+                section += f'''- Current: ${current_run_cost:.4f}/run ({duration_min:.0f} min @ ${current_cost_per_min:.4f}/min)
 - Recommended: ${new_run_cost:.4f}/run (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
 - **Per-run difference: {'-$' if cost_diff < 0 else '+$'}{abs(cost_diff):.4f}** ({'-' if cost_diff < 0 else '+'}{(cost_diff/current_run_cost*100):.0f}%)
 
@@ -767,7 +870,9 @@ Your job is **straining resources** on the current runner:
 - Current: ${current_monthly:.2f}
 - Recommended: ${new_monthly:.2f}
 - **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
-
+'''
+            
+            section += f'''
 {upgrade_note}{plan_note}
 
 **How to Switch:**

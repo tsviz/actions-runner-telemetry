@@ -18,6 +18,10 @@ inputs:
     description: "Name of the current step (used with mode: 'step' to mark step boundaries for per-step analysis)."
     required: false
     default: ""
+  repo-visibility:
+    description: "Repository visibility: 'public' (free runners), 'private' (paid), or 'auto' (auto-detect from GitHub context). Affects cost analysis recommendations."
+    required: false
+    default: "auto"
 outputs:
   report-path:
     description: "Path to the generated markdown telemetry report"
@@ -48,6 +52,7 @@ runs:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_INTERVAL: ${{ inputs.interval }}
         INPUT_STEP_NAME: ${{ inputs.step-name }}
+        INPUT_REPO_VISIBILITY: ${{ inputs.repo-visibility }}
         TELEMETRY_ACTION_PATH: ${{ github.action_path }}
       run: |
         # Check if disabled

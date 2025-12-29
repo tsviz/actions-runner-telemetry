@@ -6,9 +6,11 @@ ENABLED="${INPUT_ENABLED:-true}"
 MODE="${INPUT_MODE:-auto}"
 INTERVAL="${INPUT_INTERVAL:-2}"
 STEP_NAME="${INPUT_STEP_NAME:-}"
+REPO_VISIBILITY="${INPUT_REPO_VISIBILITY:-auto}"
 TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE:-/github/workspace}/.telemetry_data.json"
 export TELEMETRY_DATA_FILE
 export TELEMETRY_INTERVAL="$INTERVAL"
+export REPO_VISIBILITY="$REPO_VISIBILITY"
 
 # Check if action is disabled
 if [ "$ENABLED" = "false" ] || [ "$ENABLED" = "0" ] || [ "$ENABLED" = "no" ]; then
