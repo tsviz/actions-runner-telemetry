@@ -7,10 +7,28 @@ MODE="${INPUT_MODE:-auto}"
 INTERVAL="${INPUT_INTERVAL:-2}"
 STEP_NAME="${INPUT_STEP_NAME:-}"
 REPO_VISIBILITY="${INPUT_REPO_VISIBILITY:-auto}"
+RUNNER_LABEL="${INPUT_RUNNER_LABEL:-}"
 TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE:-/github/workspace}/.telemetry_data.json"
 export TELEMETRY_DATA_FILE
 export TELEMETRY_INTERVAL="$INTERVAL"
 export REPO_VISIBILITY="$REPO_VISIBILITY"
+export RUNNER_LABEL="$RUNNER_LABEL"
+
+# Auto-detect repository visibility if needed (for cost analysis)
+if [ "$REPO_VISIBILITY" = "auto" ]; then
+  # Try to detect using GitHub CLI if available
+  if command -v gh &> /dev/null; then
+    DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate | if . then "private" else "public" end' 2>/dev/null || echo "private")
+    export GITHUB_REPOSITORY_VISIBILITY="$DETECTED_VISIBILITY"
+  else
+    # Fallback: GitHub's GITHUB_REPOSITORY environment doesn't include visibility
+    # Default to private for safety in cost calculations
+    export GITHUB_REPOSITORY_VISIBILITY="private"
+  fi
+else
+  # Use the explicitly provided visibility
+  export GITHUB_REPOSITORY_VISIBILITY="$REPO_VISIBILITY"
+fi
 
 # Check if action is disabled
 if [ "$ENABLED" = "false" ] || [ "$ENABLED" = "0" ] || [ "$ENABLED" = "no" ]; then

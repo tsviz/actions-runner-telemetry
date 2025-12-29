@@ -395,9 +395,12 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     duration_minutes = max(1, math.ceil(duration_seconds / 60))  # GitHub rounds up to nearest minute
     
     # Use requested runner name for billing (what they asked for)
-    # Fall back to detected type if no requested name available
+    # Priority: explicitly provided RUNNER_LABEL env var > GitHub context runner_name > detected type
     ctx = data.get('github_context', {})
-    requested_runner_name = ctx.get('runner_name', '').lower()
+    
+    # Check for explicitly provided runner label (from action input)
+    explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
+    requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '').lower()
     detected_runner_type = detect_runner_type(data)
     
     # Determine the billing runner type
@@ -666,7 +669,9 @@ def generate_utilization_section(data, analyzed_steps=None):
     if cost_analysis:
         # Determine if current runner is free or paid
         ctx = data.get('github_context', {})
-        requested_runner_name = ctx.get('runner_name', '')
+        # Check for explicitly provided runner label first (from action input)
+        explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
+        requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '')
         repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
         
         # Determine if public or private repo
@@ -876,7 +881,9 @@ GitHub hosted runners are cost-effective when properly utilized:
             # Get billing context - are we upgrading from free to paid?
             current_runner_type = detect_runner_type(data)
             ctx = data.get('github_context', {})
-            requested_runner_name = ctx.get('runner_name', '')  # What they requested in runs-on:
+            # Check for explicitly provided runner label first (from action input)
+            explicit_runner_label = os.environ.get('RUNNER_LABEL', '').lower()
+            requested_runner_name = explicit_runner_label if explicit_runner_label else ctx.get('runner_name', '')  # What they requested in runs-on:
             billing_context = get_runner_billing_context(current_runner_type, requested_runner_name=requested_runner_name)
             current_is_free = billing_context['is_free']
             new_is_free = is_runner_free(upgrade_rec['recommended'])
