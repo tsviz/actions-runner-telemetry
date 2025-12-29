@@ -382,14 +382,31 @@ def calculate_utilization_score(data):
     }
 
 def calculate_cost_analysis(data, utilization, analyzed_steps=None):
-    """Calculate cost analysis and potential savings."""
+    """Calculate cost analysis and potential savings.
+    
+    Uses the REQUESTED runner type (what they asked for in runs-on:) for billing,
+    not the detected type (which might be different hardware).
+    """
     if not utilization:
         return None
     
     duration_seconds = data.get('duration', 0)
     duration_minutes = max(1, math.ceil(duration_seconds / 60))  # GitHub rounds up to nearest minute
     
-    runner_type = detect_runner_type(data)
+    # Use requested runner name for billing (what they asked for)
+    # Fall back to detected type if no requested name available
+    ctx = data.get('github_context', {})
+    requested_runner_name = ctx.get('runner_name', '').lower()
+    detected_runner_type = detect_runner_type(data)
+    
+    # Determine the billing runner type
+    if requested_runner_name and requested_runner_name in GITHUB_RUNNERS:
+        # They explicitly requested a specific runner (e.g., linux-4-core or ubuntu-latest)
+        runner_type = requested_runner_name
+    else:
+        # Use detected type
+        runner_type = detected_runner_type
+    
     runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest'])
     
     current_cost = duration_minutes * runner_specs['cost_per_min']
@@ -428,6 +445,8 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     
     return {
         'runner_type': runner_type,
+        'detected_runner_type': detected_runner_type,  # Include detected type for reference
+        'requested_runner_name': requested_runner_name,
         'runner_specs': runner_specs,
         'duration_minutes': duration_minutes,
         'current_cost': current_cost,
@@ -644,15 +663,44 @@ def generate_utilization_section(data, analyzed_steps=None):
 '''
     
     if cost_analysis:
-        section += f'''### 💵 Cost Analysis (Jan 2026+ Pricing)
+        # Determine if current runner is free or paid
+        ctx = data.get('github_context', {})
+        requested_runner_name = ctx.get('runner_name', '')
+        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
+        
+        # Determine if public or private repo
+        if repo_visibility == 'public':
+            is_public_repo = True
+        elif repo_visibility == 'private':
+            is_public_repo = False
+        else:
+            # Default to private (safer assumption for cost)
+            is_public_repo = False
+        
+        is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo, requested_runner_name=requested_runner_name)
+        
+        # Skip cost analysis for free runners - cost analysis doesn't apply when price is $0
+        if not is_free:
+            cost_display = f"${cost_analysis['current_cost']:.4f} ({int(cost_analysis['duration_minutes'])} min)"
+            monthly_cost_display = f"${cost_analysis['monthly_cost']:.2f}"
+            
+            section += f'''### 💵 Cost Analysis (Jan 2026+ Pricing)
 
 > 📖 Pricing reference: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 | Metric | Value |
 |:-------|------:|
 | **Runner Type** | `{cost_analysis['runner_specs']['name']}` |
-| **This Run** | ${cost_analysis['current_cost']:.4f} ({int(cost_analysis['duration_minutes'])} min) |
-| **Est. Monthly** (10 runs/day) | ${cost_analysis['monthly_cost']:.2f} |
+| **This Run** | {cost_display} |
+| **Est. Monthly** (10 runs/day) | {monthly_cost_display} |
+
+'''
+        else:
+            # For free runners, show a simple notice instead of cost analysis
+            visibility_note = "public repository" if is_public_repo else "private repository"
+            section += f'''### 🎉 Free Runner
+
+This job ran on `{cost_analysis['runner_specs']['name']}` at **no cost** (standard GitHub-hosted runner on {visibility_note}).
 
 '''
         
