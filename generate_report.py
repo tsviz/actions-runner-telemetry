@@ -622,6 +622,23 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     
     # Check if upgrade is actually possible (recommended != current)
     is_upgrade_possible = recommended != current_runner_type
+
+    # If the recommended runner is not strictly larger than current, escalate within same family
+    if is_upgrade_possible and recommended_cores <= current_cores:
+        if 'linux' in recommended:
+            recommended = 'linux-8-core' if current_cores >= 4 else 'linux-4-core'
+        elif 'windows' in recommended:
+            recommended = 'windows-8-core' if current_cores >= 4 else 'windows-4-core'
+        elif 'macos' in recommended:
+            # Prefer Apple Silicon xlarge or Intel large depending on current family
+            if 'latest' in current_runner_type or '14' in current_runner_type or '15' in current_runner_type:
+                recommended = 'macos-14-xlarge'
+            else:
+                recommended = 'macos-13-large'
+        # Refresh specs after escalation
+        recommended_specs = GITHUB_RUNNERS.get(recommended, {})
+        recommended_cores = recommended_specs.get('vcpus', recommended_cores)
+        recommended_cost_per_min = recommended_specs.get('cost_per_min', recommended_cost_per_min)
     
     # Additional fallback: if current is 2-core and recommended is also 2-core, force 4-core upgrade
     if not is_upgrade_possible and current_cores <= 2:
