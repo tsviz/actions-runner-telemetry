@@ -982,14 +982,18 @@ Your job is **straining resources** on the current runner:
 ⚠️ **Important Trade-off:** You're currently using GitHub's free runners available to public repositories. Upgrading to a larger runner means incurring costs, but you gain significant speed and reliability benefits listed above.
 '''
             else:
+                # Calculate percentage changes safely (avoid division by zero for free runners)
+                cost_diff_pct = (cost_diff/current_run_cost*100) if current_run_cost > 0 else 0
+                monthly_diff_pct = (monthly_diff/current_monthly*100) if current_monthly > 0 else 0
+                
                 section += f'''- Current: ${current_run_cost:.4f}/run ({duration_min:.0f} min @ ${current_cost_per_min:.4f}/min)
 - Recommended: ${new_run_cost:.4f}/run (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
-- **Per-run difference: {'-$' if cost_diff < 0 else '+$'}{abs(cost_diff):.4f}** ({'-' if cost_diff < 0 else '+'}{(cost_diff/current_run_cost*100):.0f}%)
+- **Per-run difference: {'-$' if cost_diff < 0 else '+$'}{abs(cost_diff):.4f}** ({'-' if cost_diff < 0 else '+'}{cost_diff_pct:.0f}%)
 
 **Monthly Cost Comparison** (10 runs/day, 300 runs/month):
 - Current: ${current_monthly:.2f}
 - Recommended: ${new_monthly:.2f}
-- **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{(monthly_diff/current_monthly*100):.0f}%)
+- **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{monthly_diff_pct:.0f}%)
 '''
             
             section += f'''
