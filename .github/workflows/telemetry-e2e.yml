@@ -7,7 +7,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # TODO: add windows-latest, macos-latest after cross-OS metrics support
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,6 +24,7 @@ jobs:
           interval: 1
 
       - name: Simulate Build (CPU)
+        shell: bash
         run: |
           python3 - <<'PY'
           import math, time
@@ -36,6 +42,7 @@ jobs:
           step-name: Build
 
       - name: Simulate Tests (Memory)
+        shell: bash
         run: |
           python3 - <<'PY'
           import time, random
