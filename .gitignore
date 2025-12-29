@@ -8,13 +8,14 @@ node_modules/
 *.tmp
 *.swp
 
-# Test output files
+# Test output files and generated artifacts
 runner-telemetry.txt
-/output/
+output/
 telemetry-*.html
 telemetry-*.json
 telemetry-*.csv
+telemetry-report.md
+.telemetry_data.json
+step-summary.md
 
-# Local test scripts (not needed in production)
-test_local.sh
-test_simulation.sh
+# Local test scripts (kept; ignore changes to outputs rather than scripts)
