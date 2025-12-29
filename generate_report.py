@@ -122,22 +122,27 @@ def get_repo_visibility_from_data(data):
     Returns:
         'public' or 'private'
     """
-    # First check if captured in telemetry data
+    # First check if captured in telemetry data (and it's not N/A or empty)
     ctx = data.get('github_context', {})
     captured_visibility = ctx.get('repository_visibility', '').lower()
     if captured_visibility in ['public', 'private']:
         return captured_visibility
     
     # Fall back to environment variables
-    repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
+    # Try REPO_VISIBILITY first (user-set override)
+    repo_visibility = os.environ.get('REPO_VISIBILITY', '').lower()
     if repo_visibility == 'public':
         return 'public'
     elif repo_visibility == 'private':
         return 'private'
-    else:
-        # Auto-detect: use GitHub's environment variable (defaults to private for safety)
-        github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+    
+    # Try GitHub's official environment variable
+    github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', '').lower()
+    if github_repo_visibility in ['public', 'private']:
         return github_repo_visibility
+    
+    # Last resort: default to private for safety (unknown visibility = assume paid)
+    return 'private'
 
 def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None):
     """Determine if a runner is free to use (public repo on standard runner).
