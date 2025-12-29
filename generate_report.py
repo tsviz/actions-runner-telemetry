@@ -161,32 +161,65 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
 def detect_runner_type(data):
-    """Detect the runner type from the data based on OS and CPU count.
+    """Detect the runner type by matching actual system specs to known GitHub runners.
     
-    Returns either a known GitHub runner type (e.g. 'ubuntu-latest') or 
-    a special marker like 'custom-linux-8core' for self-hosted runners.
+    Uses CPU cores, memory, and OS to find the best match in GITHUB_RUNNERS.
+    Returns either a known GitHub runner key (e.g. 'ubuntu-latest') or 
+    a custom runner identifier for self-hosted runners.
     """
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
     runner_name = ctx.get('runner_name', '').lower()
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
+    memory_mb = initial.get('memory_total_mb', 7000)  # Default to ~7GB
+    memory_gb = memory_mb / 1024
     
-    # Detect based on runner name if available
-    # Custom runner names won't match known GitHub runners, so mark them as custom
-    is_custom_runner = runner_name and runner_name not in GITHUB_RUNNERS
+    # Check if this is a known custom/self-hosted runner
+    # Custom runner names typically won't match GitHub's standard patterns
+    is_custom_runner = (
+        runner_name and 
+        runner_name not in GITHUB_RUNNERS and
+        'github actions' not in runner_name  # GitHub Actions runners have generic names
+    )
     
+    if is_custom_runner:
+        # For custom runners, return the runner name as identifier
+        return runner_name
+    
+    # Match based on actual system specs (CPU cores, memory, OS)
+    # Find the best matching GitHub runner by specs
+    best_match = None
+    best_match_score = float('inf')
+    
+    for runner_key, specs in GITHUB_RUNNERS.items():
+        runner_os_type = specs.get('sku', '').split('_')[0]  # e.g., 'linux', 'windows', 'macos'
+        spec_cores = specs.get('vcpus', 2)
+        spec_memory = specs.get('ram_gb', 7)
+        
+        # Only match same OS type
+        if runner_os_type not in runner_os:
+            continue
+        
+        # Score based on how close the specs are
+        # Prefer exact matches, but also consider close matches
+        core_diff = abs(spec_cores - cpu_count)
+        memory_diff = abs(spec_memory - memory_gb)
+        
+        # Lower score = better match
+        # Weight core matching more heavily than memory
+        match_score = (core_diff * 2) + (memory_diff * 0.5)
+        
+        if match_score < best_match_score:
+            best_match_score = match_score
+            best_match = runner_key
+    
+    # If we found a match, return it
+    if best_match and best_match_score < 10:  # Reasonable match threshold
+        return best_match
+    
+    # Fallback: determine runner by CPU cores if no good match found
     if 'linux' in runner_os:
-        # If it's a known GitHub runner, use it
-        if runner_name in GITHUB_RUNNERS:
-            return runner_name
-        
-        # If it's a custom/self-hosted runner, mark it as such
-        if is_custom_runner:
-            # Use the actual runner name as the identifier (e.g. 'tsvi-linux8cores')
-            return runner_name  # Will be identified as custom in later checks
-        
-        # Fallback to CPU-based detection for standard runners
         if cpu_count <= 1:
             return 'ubuntu-slim'
         elif cpu_count >= 8:
