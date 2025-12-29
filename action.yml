@@ -63,6 +63,9 @@ runs:
         fi
         echo "enabled=true" >> $GITHUB_OUTPUT
         
+        # Export REPO_VISIBILITY for entrypoint.sh to handle detection
+        export REPO_VISIBILITY="${INPUT_REPO_VISIBILITY:-auto}"
+
         # Set up telemetry data file
         export TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE}/.telemetry_data.json"
         export TELEMETRY_INTERVAL="$INPUT_INTERVAL"

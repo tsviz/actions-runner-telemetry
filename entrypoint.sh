@@ -12,39 +12,62 @@ export TELEMETRY_DATA_FILE
 export TELEMETRY_INTERVAL="$INTERVAL"
 export REPO_VISIBILITY="$REPO_VISIBILITY"
 
-# Set repository visibility for cost analysis
-# The simplest and most reliable way: use gh CLI which is always available in GitHub Actions
-if [ "$REPO_VISIBILITY" = "auto" ]; then
-  # Try gh CLI - it's always available in GitHub Actions
-  if command -v gh &> /dev/null; then
-    # Use gh to query repo visibility
-    # Note: gh outputs "true" or "false" (strings, may have whitespace)
-    DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null | tr -d ' \n')
-    
-    # Debug output
-    echo "[VISIBILITY DEBUG] gh returned: '$DETECTED_VISIBILITY'"
-    
-    # isPrivate=false means public repo, isPrivate=true means private repo
-    if [ "$DETECTED_VISIBILITY" = "false" ]; then
-      export GITHUB_REPOSITORY_VISIBILITY="public"
-      echo "[VISIBILITY DEBUG] isPrivate=false, setting to public"
-    elif [ "$DETECTED_VISIBILITY" = "true" ]; then
-      export GITHUB_REPOSITORY_VISIBILITY="private"
-      echo "[VISIBILITY DEBUG] isPrivate=true, setting to private"
-    else
-      # gh CLI failed to get visibility - default to private for safety
-      export GITHUB_REPOSITORY_VISIBILITY="private"
-      echo "[VISIBILITY DEBUG] gh returned unknown value '$DETECTED_VISIBILITY', defaulting to private"
-    fi
-  else
-    # No gh available - default to private for safety
-    export GITHUB_REPOSITORY_VISIBILITY="private"
-    echo "[VISIBILITY DEBUG] gh not available, using private"
-  fi
-else
-  # Use the explicitly provided visibility
+## Repo visibility detection (public vs private)
+# Order: explicit input → event payload → gh CLI → private fallback
+if [ "$REPO_VISIBILITY" = "public" ] || [ "$REPO_VISIBILITY" = "private" ]; then
   export GITHUB_REPOSITORY_VISIBILITY="$REPO_VISIBILITY"
   echo "[VISIBILITY DEBUG] Using explicit visibility: $REPO_VISIBILITY"
+else
+  # Try GitHub event payload (repository.private) first
+  if [ -n "$GITHUB_EVENT_PATH" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      IS_PRIVATE=$(jq -r '.repository.private // empty' "$GITHUB_EVENT_PATH" | tr -d ' \n')
+    else
+      IS_PRIVATE=$(python3 - <<'PY'
+import json, os
+path = os.environ.get('GITHUB_EVENT_PATH','')
+val = ''
+try:
+  with open(path,'r') as f:
+    data = json.load(f)
+    v = data.get('repository',{}).get('private', None)
+    if v is True:
+      val = 'true'
+    elif v is False:
+      val = 'false'
+except Exception:
+  pass
+print(val)
+PY
+      )
+      IS_PRIVATE=$(echo "$IS_PRIVATE" | tr -d ' \n')
+    fi
+    echo "[VISIBILITY DEBUG] Event payload repository.private: '$IS_PRIVATE'"
+    if [ "$IS_PRIVATE" = "true" ]; then
+      export GITHUB_REPOSITORY_VISIBILITY="private"
+    elif [ "$IS_PRIVATE" = "false" ]; then
+      export GITHUB_REPOSITORY_VISIBILITY="public"
+    fi
+  fi
+
+  # If still not set, try gh CLI
+  if [ -z "$GITHUB_REPOSITORY_VISIBILITY" ]; then
+    if command -v gh >/dev/null 2>&1; then
+      DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null | tr -d ' \n')
+      echo "[VISIBILITY DEBUG] gh isPrivate: '$DETECTED_VISIBILITY'"
+      if [ "$DETECTED_VISIBILITY" = "true" ]; then
+        export GITHUB_REPOSITORY_VISIBILITY="private"
+      elif [ "$DETECTED_VISIBILITY" = "false" ]; then
+        export GITHUB_REPOSITORY_VISIBILITY="public"
+      fi
+    fi
+  fi
+
+  # Final fallback
+  if [ -z "$GITHUB_REPOSITORY_VISIBILITY" ]; then
+    export GITHUB_REPOSITORY_VISIBILITY="private"
+    echo "[VISIBILITY DEBUG] Defaulting to private (unable to auto-detect)"
+  fi
 fi
 
 echo "[VISIBILITY DEBUG] Final GITHUB_REPOSITORY_VISIBILITY=$GITHUB_REPOSITORY_VISIBILITY"
