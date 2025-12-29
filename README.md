@@ -259,11 +259,12 @@ env:
 The action creates these files (optional to upload):
 
 | File | What it contains |
-|------|-----------------|
-| `telemetry-report.html` | Interactive dashboard artifact |
+|------|------------------|
+| `telemetry-report.md` | Markdown report for the Job Summary |
+| `telemetry-dashboard.html` | Interactive HTML dashboard artifact |
 | `telemetry-raw.json` | All raw metrics data |
 | `telemetry-samples.csv` | Time-series data for analysis |
-| `telemetry-summary.json` | Flattened summary |
+| `telemetry-summary.json` | Flattened summary (dashboard-ready) |
 
 To keep them:
 
@@ -274,9 +275,11 @@ To keep them:
   with:
     name: runner-telemetry
     path: |
-      telemetry-report.html
+      telemetry-report.md
+      telemetry-dashboard.html
       telemetry-raw.json
       telemetry-samples.csv
+      telemetry-summary.json
 ```
 
 ## Local Testing
