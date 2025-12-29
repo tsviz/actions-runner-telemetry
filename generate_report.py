@@ -551,10 +551,14 @@ def generate_utilization_section(data, analyzed_steps=None):
 
 '''
         
-        # Only recommend right-sizing if runner is UNDER-utilized (avg < 40%)
-        # Do NOT recommend downgrading if over-utilized (that's handled by upgrade recommendations)
-        is_underutilized = (utilization['avg_cpu_pct'] < 40 and utilization['avg_mem_pct'] < 40)
-        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and is_underutilized:
+        # Only recommend downgrading if BOTH conditions are met:
+        # 1. Average utilization is low (< 40%)
+        # 2. Peak utilization is also reasonable (< 70%) - no spiky overload
+        # Do NOT recommend downgrading if peak shows overutilization (>= 70%), even if avg is low
+        has_spiky_usage = (utilization['max_cpu_pct'] >= 70 or utilization['max_mem_pct'] >= 70)
+        is_truly_underutilized = (utilization['avg_cpu_pct'] < 40 and utilization['avg_mem_pct'] < 40 and not has_spiky_usage)
+        
+        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and is_truly_underutilized:
             right_specs = GITHUB_RUNNERS.get(cost_analysis['right_sized_runner'], GITHUB_RUNNERS['ubuntu-latest'])
             savings_pct = (cost_analysis['potential_savings'] / cost_analysis['current_cost'] * 100) if cost_analysis['current_cost'] > 0 else 0
             section += f'''
