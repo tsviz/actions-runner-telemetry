@@ -1,0 +1,65 @@
+name: Telemetry E2E
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start Telemetry
+        uses: ./
+        with:
+          enabled: true
+          interval: 1
+
+      - name: Simulate Build (CPU)
+        run: |
+          python3 - <<'PY'
+          import math, time
+          s = 0
+          for i in range(2_000_000):
+              s += math.sin(i) * math.cos(i)
+          time.sleep(1)
+          print("build complete", s)
+          PY
+
+      - name: Mark Step - Build
+        uses: ./
+        with:
+          mode: step
+          step-name: Build
+
+      - name: Simulate Tests (Memory)
+        run: |
+          python3 - <<'PY'
+          import time, random
+          data = []
+          for i in range(20):
+              data.append([random.random() for _ in range(500_000)])
+          time.sleep(2)
+          print("tests complete", len(data))
+          PY
+
+      - name: Mark Step - Test
+        uses: ./
+        with:
+          mode: step
+          step-name: Test
+
+      - name: Upload Telemetry Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-telemetry
+          path: |
+            telemetry-report.md
+            telemetry-dashboard.html
+            telemetry-raw.json
+            telemetry-samples.csv
+            telemetry-summary.json

@@ -141,7 +141,10 @@ Done. The report appears in your workflow summary when the job finishes.
 - uses: tsviz/actions-runner-telemetry@v1
 ```
 
-Runs in background, generates report at the end.
+Runs in background and automatically generates the report at job completion.
+No extra `mode: stop` step is required. The action includes a post step that
+always runs at the end of the job (even on failures) to stop collection and write
+the summary/dashboard.
 
 ### Full Control
 
