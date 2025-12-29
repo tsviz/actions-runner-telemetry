@@ -116,6 +116,29 @@ FREE_RUNNER_LABELS = {
     'windows-11-arm'
 }
 
+def get_repo_visibility_from_data(data):
+    """Get repository visibility from telemetry data, with env fallback.
+    
+    Returns:
+        'public' or 'private'
+    """
+    # First check if captured in telemetry data
+    ctx = data.get('github_context', {})
+    captured_visibility = ctx.get('repository_visibility', '').lower()
+    if captured_visibility in ['public', 'private']:
+        return captured_visibility
+    
+    # Fall back to environment variables
+    repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
+    if repo_visibility == 'public':
+        return 'public'
+    elif repo_visibility == 'private':
+        return 'private'
+    else:
+        # Auto-detect: use GitHub's environment variable (defaults to private for safety)
+        github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+        return github_repo_visibility
+
 def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None):
     """Determine if a runner is free to use (public repo on standard runner).
     
@@ -420,19 +443,9 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     duration_seconds = data.get('duration', 0)
     duration_minutes = max(1, math.ceil(duration_seconds / 60))  # GitHub rounds up to nearest minute
     
-    # Determine repo visibility for runner detection
-    ctx = data.get('github_context', {})
-    repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
-    
-    # Determine if public or private repo
-    if repo_visibility == 'public':
-        is_public_repo = True
-    elif repo_visibility == 'private':
-        is_public_repo = False
-    else:
-        # Auto-detect: check GitHub's environment variable
-        github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
-        is_public_repo = (github_repo_visibility == 'public')
+    # Determine repo visibility from telemetry data or environment
+    repo_visibility_value = get_repo_visibility_from_data(data)
+    is_public_repo = (repo_visibility_value == 'public')
     
     # Detect runner type, preferring standard runners for public repos
     detected_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
@@ -704,18 +717,8 @@ def generate_utilization_section(data, analyzed_steps=None):
     
     if cost_analysis:
         # Determine if current runner is free or paid
-        ctx = data.get('github_context', {})
-        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
-        
-        # Determine if public or private repo
-        if repo_visibility == 'public':
-            is_public_repo = True
-        elif repo_visibility == 'private':
-            is_public_repo = False
-        else:
-            # Auto-detect: check GitHub's environment variable
-            github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
-            is_public_repo = (github_repo_visibility == 'public')
+        repo_visibility_value = get_repo_visibility_from_data(data)
+        is_public_repo = (repo_visibility_value == 'public')
         
         is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo)
         
@@ -811,14 +814,8 @@ GitHub hosted runners are cost-effective when properly utilized:
         duration_sec = data.get('duration', 0)
         
         # Determine repo visibility for accurate detection
-        repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
-        if repo_visibility == 'public':
-            is_public_repo = True
-        elif repo_visibility == 'private':
-            is_public_repo = False
-        else:
-            github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
-            is_public_repo = (github_repo_visibility == 'public')
+        repo_visibility_value = get_repo_visibility_from_data(data)
+        is_public_repo = (repo_visibility_value == 'public')
         
         current_runner = detect_runner_type(data, is_public_repo=is_public_repo)
         
@@ -924,14 +921,8 @@ GitHub hosted runners are cost-effective when properly utilized:
             
             # Get billing context - are we upgrading from free to paid?
             # Determine repo visibility for accurate billing detection
-            repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower()
-            if repo_visibility == 'public':
-                is_public_repo = True
-            elif repo_visibility == 'private':
-                is_public_repo = False
-            else:
-                github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
-                is_public_repo = (github_repo_visibility == 'public')
+            repo_visibility_value = get_repo_visibility_from_data(data)
+            is_public_repo = (repo_visibility_value == 'public')
             
             current_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
             billing_context = get_runner_billing_context(current_runner_type)

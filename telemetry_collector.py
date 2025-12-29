@@ -458,6 +458,7 @@ def start_collection():
             'actor': os.environ.get('GITHUB_ACTOR', 'N/A'),
             'runner_os': os.environ.get('RUNNER_OS', 'N/A'),
             'runner_name': os.environ.get('RUNNER_NAME', 'N/A'),
+            'repository_visibility': os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'N/A'),
         }
     }
     
@@ -649,6 +650,7 @@ def snapshot_collection():
             'actor': os.environ.get('GITHUB_ACTOR', 'N/A'),
             'runner_os': os.environ.get('RUNNER_OS', 'N/A'),
             'runner_name': os.environ.get('RUNNER_NAME', 'N/A'),
+            'repository_visibility': os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'N/A'),
         }
     }
     
