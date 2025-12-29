@@ -164,7 +164,7 @@ def detect_runner_type(data):
     """Detect the runner type by matching actual system specs to known GitHub runners.
     
     Uses CPU cores, memory, and OS to find the best match in GITHUB_RUNNERS.
-    Returns either a known GitHub runner key (e.g. 'ubuntu-latest') or 
+    Returns either a known GitHub runner key (e.g. 'linux-4-core') or 
     a custom runner identifier for self-hosted runners.
     """
     ctx = data.get('github_context', {})
@@ -193,12 +193,24 @@ def detect_runner_type(data):
     best_match_score = float('inf')
     
     for runner_key, specs in GITHUB_RUNNERS.items():
-        runner_os_type = specs.get('sku', '').split('_')[0]  # e.g., 'linux', 'windows', 'macos'
+        # Match by SKU prefix (e.g., 'linux', 'windows', 'macos')
+        sku = specs.get('sku', '')
         spec_cores = specs.get('vcpus', 2)
         spec_memory = specs.get('ram_gb', 7)
         
+        # Check OS match - be flexible with SKU parsing
+        sku_lower = sku.lower()
+        if 'linux' in sku_lower:
+            os_matches = 'linux' in runner_os
+        elif 'windows' in sku_lower:
+            os_matches = 'windows' in runner_os
+        elif 'macos' in sku_lower:
+            os_matches = 'macos' in runner_os
+        else:
+            os_matches = False
+        
         # Only match same OS type
-        if runner_os_type not in runner_os:
+        if not os_matches:
             continue
         
         # Score based on how close the specs are
@@ -207,15 +219,16 @@ def detect_runner_type(data):
         memory_diff = abs(spec_memory - memory_gb)
         
         # Lower score = better match
-        # Weight core matching more heavily than memory
+        # Weight core matching more heavily than memory (2x weight)
         match_score = (core_diff * 2) + (memory_diff * 0.5)
         
         if match_score < best_match_score:
             best_match_score = match_score
             best_match = runner_key
     
-    # If we found a match, return it
-    if best_match and best_match_score < 10:  # Reasonable match threshold
+    # If we found a good match (score < 10), return it
+    # This allows for slight variations in memory
+    if best_match and best_match_score < 10:
         return best_match
     
     # Fallback: determine runner by CPU cores if no good match found
