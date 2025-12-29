@@ -21,7 +21,8 @@ else
   # Try GitHub event payload (repository.private) first
   if [ -n "$GITHUB_EVENT_PATH" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
     if command -v jq >/dev/null 2>&1; then
-      IS_PRIVATE=$(jq -r '.repository.private // empty' "$GITHUB_EVENT_PATH" | tr -d ' \n')
+      # Explicitly map to strings; treat missing as empty
+      IS_PRIVATE=$(jq -r 'if .repository and (.repository.private==true) then "true" elif .repository and (.repository.private==false) then "false" else "" end' "$GITHUB_EVENT_PATH" | tr -d ' \n')
     else
       IS_PRIVATE=$(python3 - <<'PY'
 import json, os

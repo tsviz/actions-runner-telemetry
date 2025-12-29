@@ -63,8 +63,47 @@ runs:
         fi
         echo "enabled=true" >> $GITHUB_OUTPUT
         
-        # Export REPO_VISIBILITY for entrypoint.sh to handle detection
+        # Detect and export repository visibility for cost analysis
         export REPO_VISIBILITY="${INPUT_REPO_VISIBILITY:-auto}"
+        if [[ "$REPO_VISIBILITY" == "public" || "$REPO_VISIBILITY" == "private" ]]; then
+          export GITHUB_REPOSITORY_VISIBILITY="$REPO_VISIBILITY"
+          echo "[VISIBILITY DEBUG] Using explicit visibility: $REPO_VISIBILITY"
+        else
+          # Try GitHub event payload first (repository.private boolean)
+          if [[ -n "$GITHUB_EVENT_PATH" && -f "$GITHUB_EVENT_PATH" ]]; then
+            if command -v jq &>/dev/null; then
+              IS_PRIVATE=$(jq -r 'if .repository and (.repository.private==true) then "true" elif .repository and (.repository.private==false) then "false" else "" end' "$GITHUB_EVENT_PATH" | tr -d ' \n')
+            else
+              IS_PRIVATE=""
+            fi
+            echo "[VISIBILITY DEBUG] Event payload repository.private: '$IS_PRIVATE'"
+            if [[ "$IS_PRIVATE" == "true" ]]; then
+              export GITHUB_REPOSITORY_VISIBILITY="private"
+            elif [[ "$IS_PRIVATE" == "false" ]]; then
+              export GITHUB_REPOSITORY_VISIBILITY="public"
+            fi
+          fi
+
+          # If still empty, try gh CLI
+          if [[ -z "${GITHUB_REPOSITORY_VISIBILITY}" ]]; then
+            if command -v gh &>/dev/null; then
+              DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null | tr -d ' \n')
+              echo "[VISIBILITY DEBUG] gh isPrivate: '$DETECTED_VISIBILITY'"
+              if [[ "$DETECTED_VISIBILITY" == "true" ]]; then
+                export GITHUB_REPOSITORY_VISIBILITY="private"
+              elif [[ "$DETECTED_VISIBILITY" == "false" ]]; then
+                export GITHUB_REPOSITORY_VISIBILITY="public"
+              fi
+            fi
+          fi
+
+          # Final fallback: default to private for safety
+          if [[ -z "${GITHUB_REPOSITORY_VISIBILITY}" ]]; then
+            export GITHUB_REPOSITORY_VISIBILITY="private"
+            echo "[VISIBILITY DEBUG] Defaulting to private (unable to auto-detect)"
+          fi
+        fi
+        echo "[VISIBILITY DEBUG] Final GITHUB_REPOSITORY_VISIBILITY=$GITHUB_REPOSITORY_VISIBILITY"
 
         # Set up telemetry data file
         export TELEMETRY_DATA_FILE="${GITHUB_WORKSPACE}/.telemetry_data.json"
