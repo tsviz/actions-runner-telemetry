@@ -18,21 +18,23 @@ if [ "$REPO_VISIBILITY" = "auto" ]; then
   # Try gh CLI - it's always available in GitHub Actions
   if command -v gh &> /dev/null; then
     # Use gh to query repo visibility
-    DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null)
+    # Note: gh outputs "true" or "false" (strings, may have whitespace)
+    DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null | tr -d ' \n')
     
     # Debug output
     echo "[VISIBILITY DEBUG] gh returned: '$DETECTED_VISIBILITY'"
     
-    if [ "$DETECTED_VISIBILITY" = "true" ]; then
-      export GITHUB_REPOSITORY_VISIBILITY="private"
-      echo "[VISIBILITY DEBUG] Set to private"
-    elif [ "$DETECTED_VISIBILITY" = "false" ]; then
+    # isPrivate=false means public repo, isPrivate=true means private repo
+    if [ "$DETECTED_VISIBILITY" = "false" ]; then
       export GITHUB_REPOSITORY_VISIBILITY="public"
-      echo "[VISIBILITY DEBUG] Set to public"
+      echo "[VISIBILITY DEBUG] isPrivate=false, setting to public"
+    elif [ "$DETECTED_VISIBILITY" = "true" ]; then
+      export GITHUB_REPOSITORY_VISIBILITY="private"
+      echo "[VISIBILITY DEBUG] isPrivate=true, setting to private"
     else
       # gh CLI failed to get visibility - default to private for safety
       export GITHUB_REPOSITORY_VISIBILITY="private"
-      echo "[VISIBILITY DEBUG] gh returned unknown value, defaulting to private"
+      echo "[VISIBILITY DEBUG] gh returned unknown value '$DETECTED_VISIBILITY', defaulting to private"
     fi
   else
     # No gh available - default to private for safety
