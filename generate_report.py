@@ -108,12 +108,14 @@ FREE_RUNNER_LABELS = {
     'windows-11-arm'
 }
 
-def is_runner_free(runner_type, is_public_repo=None):
+def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None):
     """Determine if a runner is free to use (public repo on standard runner).
     
     Args:
         runner_type: The detected runner type name (e.g., 'ubuntu-latest', 'linux-4-core')
         is_public_repo: Optional boolean. If None, auto-detect from GitHub context.
+        requested_runner_name: Optional name of the requested runner (from RUNNER_NAME env).
+                              If provided and matches a standard runner, use that for billing.
     
     Returns:
         True if runner is free, False if paid.
@@ -130,7 +132,25 @@ def is_runner_free(runner_type, is_public_repo=None):
             # Default to private (safer assumption - assumes cost)
             is_public_repo = False
     
-    # Larger runners and custom runners are always paid
+    # Check requested runner name first (what they asked for, not what we detected)
+    # This takes precedence because billing is based on what they requested
+    if requested_runner_name:
+        requested_name = requested_runner_name.lower()
+        # Explicitly requested larger runner = always paid
+        if requested_name in ['linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
+                             'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
+                             'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
+                             'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge']:
+            return False
+        # Explicitly requested standard runner on public repo = free
+        if is_public_repo and requested_name in FREE_RUNNER_LABELS:
+            return True
+        # Explicitly requested standard runner on private repo = paid
+        if not is_public_repo and requested_name in FREE_RUNNER_LABELS:
+            return False
+    
+    # Fallback: check detected runner type
+    # Larger runners are always paid
     if runner_type in ['linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
                        'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
                        'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
@@ -143,13 +163,13 @@ def is_runner_free(runner_type, is_public_repo=None):
     
     return False
 
-def get_runner_billing_context(runner_type, is_public_repo=None):
+def get_runner_billing_context(runner_type, is_public_repo=None, requested_runner_name=None):
     """Get billing information for the runner context.
     
     Returns:
         dict with keys: is_free, is_paid, repo_type, recommendation_type
     """
-    is_free = is_runner_free(runner_type, is_public_repo)
+    is_free = is_runner_free(runner_type, is_public_repo, requested_runner_name)
     
     if is_public_repo is None:
         repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto')
@@ -805,7 +825,9 @@ GitHub hosted runners are cost-effective when properly utilized:
             
             # Get billing context - are we upgrading from free to paid?
             current_runner_type = detect_runner_type(data)
-            billing_context = get_runner_billing_context(current_runner_type)
+            ctx = data.get('github_context', {})
+            requested_runner_name = ctx.get('runner_name', '')  # What they requested in runs-on:
+            billing_context = get_runner_billing_context(current_runner_type, requested_runner_name=requested_runner_name)
             current_is_free = billing_context['is_free']
             new_is_free = is_runner_free(upgrade_rec['recommended'])
             
