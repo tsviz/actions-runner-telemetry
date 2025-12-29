@@ -20,22 +20,32 @@ if [ "$REPO_VISIBILITY" = "auto" ]; then
     # Use gh to query repo visibility
     DETECTED_VISIBILITY=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null)
     
+    # Debug output
+    echo "[VISIBILITY DEBUG] gh returned: '$DETECTED_VISIBILITY'"
+    
     if [ "$DETECTED_VISIBILITY" = "true" ]; then
       export GITHUB_REPOSITORY_VISIBILITY="private"
+      echo "[VISIBILITY DEBUG] Set to private"
     elif [ "$DETECTED_VISIBILITY" = "false" ]; then
       export GITHUB_REPOSITORY_VISIBILITY="public"
+      echo "[VISIBILITY DEBUG] Set to public"
     else
       # gh CLI failed to get visibility - default to private for safety
       export GITHUB_REPOSITORY_VISIBILITY="private"
+      echo "[VISIBILITY DEBUG] gh returned unknown value, defaulting to private"
     fi
   else
     # No gh available - default to private for safety
     export GITHUB_REPOSITORY_VISIBILITY="private"
+    echo "[VISIBILITY DEBUG] gh not available, using private"
   fi
 else
   # Use the explicitly provided visibility
   export GITHUB_REPOSITORY_VISIBILITY="$REPO_VISIBILITY"
+  echo "[VISIBILITY DEBUG] Using explicit visibility: $REPO_VISIBILITY"
 fi
+
+echo "[VISIBILITY DEBUG] Final GITHUB_REPOSITORY_VISIBILITY=$GITHUB_REPOSITORY_VISIBILITY"
 
 # Check if action is disabled
 if [ "$ENABLED" = "false" ] || [ "$ENABLED" = "0" ] || [ "$ENABLED" = "no" ]; then
