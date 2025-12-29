@@ -129,8 +129,9 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
         elif repo_visibility == 'private':
             is_public_repo = False
         else:
-            # Default to private (safer assumption - assumes cost)
-            is_public_repo = False
+            # Auto-detect: use GitHub's environment variable (defaults to private for safety)
+            github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+            is_public_repo = (github_repo_visibility == 'public')
     
     # Check requested runner name first (what they asked for, not what we detected)
     # This takes precedence because billing is based on what they requested
@@ -674,8 +675,9 @@ def generate_utilization_section(data, analyzed_steps=None):
         elif repo_visibility == 'private':
             is_public_repo = False
         else:
-            # Default to private (safer assumption for cost)
-            is_public_repo = False
+            # Auto-detect: check GitHub's environment variable
+            github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
+            is_public_repo = (github_repo_visibility == 'public')
         
         is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo, requested_runner_name=requested_runner_name)
         
