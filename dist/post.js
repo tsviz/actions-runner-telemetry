@@ -49,11 +49,18 @@ function stopCollectorIfRunning() {
   const dataFile = path.join(workspace, '.telemetry_data.json');
   setEnv('TELEMETRY_DATA_FILE', dataFile);
   setEnv('GITHUB_WORKSPACE', workspace);
+  const fallbackDataFile = '/tmp/telemetry_data.json';
 
   // If nothing was started, no-op
   if (!fs.existsSync('/tmp/telemetry_collector.pid') && !fs.existsSync(dataFile)) {
-    log('🔍 Runner Telemetry - No active collection found');
-    return;
+    if (fs.existsSync(fallbackDataFile)) {
+      setEnv('TELEMETRY_DATA_FILE', fallbackDataFile);
+      log(`🔎 Using fallback data file at ${fallbackDataFile}`);
+    } else {
+      // As a last resort, take a quick snapshot so the report still renders
+      log('🔍 No active collection found; taking a quick snapshot for reporting');
+      await runPy('telemetry_collector.py', ['snapshot']);
+    }
   }
 
   // Prevent duplicate generation when action is invoked multiple times
