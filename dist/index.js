@@ -148,7 +148,8 @@ async function main() {
       appendOutput('summary-path', path.join(outDir, 'telemetry-summary.json'));
       log('::endgroup::');
       log('✅ Telemetry report generated');
-      try { fs.writeFileSync('/tmp/telemetry_report_done', String(Date.now())); } catch (_) {}
+      // Scope lock to this run/workspace to avoid stale locks on self-hosted runners
+      try { fs.writeFileSync(path.join(workspace, '.telemetry_report_done'), String(Date.now())); } catch (_) {}
       break;
     }
     case 'snapshot': {

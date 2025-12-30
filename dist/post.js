@@ -57,7 +57,8 @@ function stopCollectorIfRunning() {
   }
 
   // Prevent duplicate generation when action is invoked multiple times
-  const lockFile = '/tmp/telemetry_report_done';
+  // Scope lock to this run/workspace to avoid stale locks on self-hosted runners
+  const lockFile = path.join(workspace, '.telemetry_report_done');
   if (fs.existsSync(lockFile)) {
     log('🔍 Runner Telemetry - Report already generated (skipping duplicate post)');
     return;
