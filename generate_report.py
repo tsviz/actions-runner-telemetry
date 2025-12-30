@@ -199,10 +199,13 @@ def normalize_runner_label(name, runner_os_hint=None):
             logging.debug("normalize_runner_label: Normalized to 'linux-4-core'")
             return 'linux-4-core'
         # Handle randomized large runner names (e.g., ubuntu-large-xyz123)
-        if contains_any(n, ['large', 'xlarge', 'bigger', 'premium']) and not contains_any(n, ['ubuntu-24', 'ubuntu-22', 'ubuntu-20']):
-            logging.debug("normalize_runner_label: Linux large runner with randomized name detected, using fallback 'linux-large-generic'")
-            # Return a generic large runner category - will be further matched by specs
-            return 'linux-large-generic'
+        # Exclude standard Ubuntu version labels (e.g., ubuntu-24.04, ubuntu-22.04)
+        is_standard_ubuntu_version = contains_any(n, ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04'])
+        if contains_any(n, ['large', 'xlarge', 'bigger', 'premium']) and not is_standard_ubuntu_version:
+            logging.debug("normalize_runner_label: Linux large runner with randomized name detected, will use spec-based detection")
+            # Return None to trigger spec-based detection instead of a generic category
+            # This allows the detect_runner_type function to match based on actual system specs
+            return None
         if contains_any(n, ['ubuntu-24.04']):
             logging.debug("normalize_runner_label: Normalized to 'ubuntu-24.04'")
             return 'ubuntu-24.04'
@@ -279,15 +282,15 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
         # Try to normalize custom labels (e.g., tsvi-linux8cores, ubuntu-large-xyz123)
         normalized = normalize_runner_label(requested_name, os.environ.get('RUNNER_OS'))
         if normalized:
-            # Handle the generic large runner case
-            if normalized == 'linux-large-generic':
-                logging.info(f"is_runner_free: Requested runner '{requested_runner_name}' normalized to generic large category - treating as paid")
-                # Large runners are always paid
-                return False
             requested_name = normalized
             logging.debug(f"is_runner_free: Normalized requested name to '{requested_name}'")
         else:
-            # If we can't normalize the requested label, fall back to detected runner type
+            # If we can't normalize the requested label, check if it has "large" keywords
+            # which typically indicate a paid larger runner
+            if any(keyword in requested_name for keyword in ['large', 'xlarge', 'bigger', 'premium']):
+                logging.info(f"is_runner_free: Requested runner '{requested_runner_name}' contains large runner keywords - treating as paid")
+                return False
+            # Otherwise, fall back to detected runner type
             logging.debug(f"is_runner_free: Could not normalize '{requested_runner_name}', using detected type '{runner_type}'")
             requested_name = runner_type
         
@@ -434,13 +437,8 @@ def detect_runner_type(data, is_public_repo=None):
     # First, try normalizing custom labels to known canonical types
     normalized = normalize_runner_label(runner_name, runner_os)
     if normalized:
-        # Handle the generic large runner fallback
-        if normalized == 'linux-large-generic':
-            logging.info(f"detect_runner_type: Normalized to generic large runner category, will use spec-based matching")
-            # Continue to spec-based matching below
-        else:
-            logging.info(f"detect_runner_type: Successfully normalized '{runner_name}' to '{normalized}'")
-            return normalized
+        logging.info(f"detect_runner_type: Successfully normalized '{runner_name}' to '{normalized}'")
+        return normalized
     
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)

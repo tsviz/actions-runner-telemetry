@@ -55,13 +55,13 @@ class TestNormalizeRunnerLabel(unittest.TestCase):
     
     def test_randomized_large_runner_names(self):
         """Test handling of randomized large runner names (e.g., ubuntu-large-xyz123)."""
-        # These should normalize to the generic large category
-        self.assertEqual(normalize_runner_label('ubuntu-large-xyz123'), 'linux-large-generic')
-        self.assertEqual(normalize_runner_label('linux-xlarge-abc456'), 'linux-large-generic')
-        self.assertEqual(normalize_runner_label('ubuntu-bigger-random'), 'linux-large-generic')
-        self.assertEqual(normalize_runner_label('linux-premium-runner'), 'linux-large-generic')
+        # These should return None to trigger spec-based detection
+        self.assertIsNone(normalize_runner_label('ubuntu-large-xyz123'))
+        self.assertIsNone(normalize_runner_label('linux-xlarge-abc456'))
+        self.assertIsNone(normalize_runner_label('ubuntu-bigger-random'))
+        self.assertIsNone(normalize_runner_label('linux-premium-runner'))
         
-        # Windows randomized large runners
+        # Windows randomized large runners should normalize to standard large runner
         self.assertEqual(normalize_runner_label('windows-large-xyz'), 'windows-4-core')
         self.assertEqual(normalize_runner_label('win-xlarge-123'), 'windows-4-core')
     
@@ -143,8 +143,8 @@ class TestDetectRunnerType(unittest.TestCase):
             }
         }
         result = detect_runner_type(data)
-        # Should match to linux-4-core based on specs after normalization attempt
-        self.assertIn(result, ['linux-4-core', 'ubuntu-latest'])
+        # Should match to ubuntu-latest based on specs (4-core, 16GB matches ubuntu-latest public spec)
+        self.assertEqual(result, 'ubuntu-latest')
     
     def test_self_hosted_runner_fallback(self):
         """Test fallback for self-hosted runner with non-standard specs."""
@@ -236,7 +236,7 @@ class TestIsRunnerFree(unittest.TestCase):
     @patch.dict(os.environ, {'RUNNER_OS': 'Linux'})
     def test_randomized_large_runner_name_paid(self):
         """Test that randomized large runner names are treated as paid."""
-        # Request name gets normalized to generic large category
+        # Request name with "large" keyword should be treated as paid
         self.assertFalse(
             is_runner_free('ubuntu-latest', is_public_repo=True, 
                           requested_runner_name='ubuntu-large-xyz123')
@@ -280,12 +280,11 @@ class TestIntegration(unittest.TestCase):
             }
         }
         
-        # Detect runner type
+        # Detect runner type - should match to ubuntu-latest based on specs
         runner_type = detect_runner_type(data)
-        # Should detect as a 4-core runner based on specs
-        self.assertIn(runner_type, ['linux-4-core', 'ubuntu-latest'])
+        self.assertEqual(runner_type, 'ubuntu-latest')
         
-        # Check if it's free (should be paid since it's a large runner)
+        # Check if it's free (should be paid since requested name has "large" keyword)
         is_free = is_runner_free(runner_type, is_public_repo=True,
                                 requested_runner_name='ubuntu-large-abc123')
         self.assertFalse(is_free)
