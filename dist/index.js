@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 function appendOutput(name, value) {
   const out = process.env.GITHUB_OUTPUT;
@@ -54,9 +54,14 @@ function detectRepoVisibility(explicit) {
 }
 
 function startCollector(interval) {
+  const pyCmd = findPython();
+  if (!pyCmd) {
+    log('❌ Python is not available on this runner. Install python3 or python.');
+    return;
+  }
   const py = actionPath('telemetry_collector.py');
   const logPath = '/tmp/telemetry_collector.log';
-  const child = spawn('python3', [py, 'start'], {
+  const child = spawn(pyCmd, [py, 'start'], {
     detached: true,
     stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
   });
@@ -79,8 +84,13 @@ function stopCollectorIfRunning() {
 }
 
 function runPy(script, args = []) {
+  const py = findPython();
+  if (!py) {
+    log('❌ Python is not available on this runner. Install python3 or python.');
+    return Promise.resolve(1);
+  }
   return new Promise((resolve) => {
-    const child = spawn('python3', [actionPath(script), ...args], { stdio: 'inherit' });
+    const child = spawn(py, [actionPath(script), ...args], { stdio: 'inherit' });
     child.on('exit', (code) => resolve(code));
   });
 }
@@ -101,6 +111,7 @@ async function main() {
 
   // Set common env for Python scripts
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+  try { fs.mkdirSync(workspace, { recursive: true }); } catch (_) {}
   setEnv('TELEMETRY_DATA_FILE', path.join(workspace, '.telemetry_data.json'));
   setEnv('TELEMETRY_INTERVAL', String(interval));
   setEnv('REPO_VISIBILITY', repoVis);
@@ -159,3 +170,13 @@ main().catch((e) => {
   console.error('Telemetry action failed:', e);
   process.exit(1);
 });
+
+function findPython() {
+  const candidates = ['python3', 'python'];
+  for (const cmd of candidates) {
+    const res = spawnSync(cmd, ['-V']);
+    if (res && res.status === 0) return cmd;
+  }
+  if (fs.existsSync('/usr/bin/python3')) return '/usr/bin/python3';
+  return null;
+}

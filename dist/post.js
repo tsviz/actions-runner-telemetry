@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 function log(msg) { process.stdout.write(`${msg}\n`); }
 function setEnv(k, v) { process.env[k] = v; }
@@ -14,8 +14,13 @@ function appendOutput(name, value) {
 function actionPath(...parts) { return path.join(__dirname, '..', ...parts); }
 
 function runPy(script, args = []) {
+  const py = findPython();
+  if (!py) {
+    log('❌ Python is not available on this runner. Install python3 or python.');
+    return Promise.resolve(1);
+  }
   return new Promise((resolve) => {
-    const child = spawn('python3', [actionPath(script), ...args], { stdio: 'inherit' });
+    const child = spawn(py, [actionPath(script), ...args], { stdio: 'inherit' });
     child.on('exit', (code) => resolve(code));
   });
 }
@@ -74,3 +79,13 @@ function stopCollectorIfRunning() {
   appendOutput('csv-path', path.join(workspace, 'telemetry-samples.csv'));
   appendOutput('summary-path', path.join(workspace, 'telemetry-summary.json'));
 })();
+
+function findPython() {
+  const candidates = ['python3', 'python'];
+  for (const cmd of candidates) {
+    const res = spawnSync(cmd, ['-V']);
+    if (res && res.status === 0) return cmd;
+  }
+  if (fs.existsSync('/usr/bin/python3')) return '/usr/bin/python3';
+  return null;
+}
