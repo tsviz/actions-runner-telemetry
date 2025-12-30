@@ -126,6 +126,9 @@ FREE_RUNNER_LABELS = {
 # Standard Ubuntu version labels (for exclusion in large runner detection)
 STANDARD_UBUNTU_VERSIONS = ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04']
 
+# Keywords that indicate a large/premium runner (typically paid)
+LARGE_RUNNER_KEYWORDS = ['large', 'xlarge', 'bigger', 'premium']
+
 def normalize_runner_label(name, runner_os_hint=None):
     """Normalize non-standard runner names to known canonical types.
 
@@ -147,7 +150,15 @@ def normalize_runner_label(name, runner_os_hint=None):
         return any(k in s for k in keys)
     
     def check_core_pattern(s, core_count):
-        """Helper to check for core count patterns (e.g., '8-core', '8cores', '8c')."""
+        """Helper to check for core count patterns.
+        
+        Args:
+            s: String to search in
+            core_count: Number of cores (e.g., 4, 8)
+            
+        Returns:
+            True if any pattern is found (e.g., '4-core', '4cores', '4core', '4c')
+        """
         patterns = [f'{core_count}-core', f'{core_count}cores', f'{core_count}core', f'{core_count}c']
         return contains_any(s, patterns)
 
@@ -191,7 +202,7 @@ def normalize_runner_label(name, runner_os_hint=None):
             logging.debug("normalize_runner_label: Normalized to 'windows-4-core'")
             return 'windows-4-core'
         # Handle randomized large runner names
-        if contains_any(n, ['large', 'xlarge', 'bigger', 'premium']):
+        if contains_any(n, LARGE_RUNNER_KEYWORDS):
             logging.debug("normalize_runner_label: Windows large runner detected, using fallback 'windows-4-core'")
             return 'windows-4-core'
         if 'latest' in n:
@@ -209,7 +220,7 @@ def normalize_runner_label(name, runner_os_hint=None):
         # Handle randomized large runner names (e.g., ubuntu-large-xyz123)
         # Exclude standard Ubuntu version labels (e.g., ubuntu-24.04, ubuntu-22.04)
         is_standard_ubuntu_version = contains_any(n, STANDARD_UBUNTU_VERSIONS)
-        if contains_any(n, ['large', 'xlarge', 'bigger', 'premium']) and not is_standard_ubuntu_version:
+        if contains_any(n, LARGE_RUNNER_KEYWORDS) and not is_standard_ubuntu_version:
             logging.debug("normalize_runner_label: Linux large runner with randomized name detected, will use spec-based detection")
             # Return None to trigger spec-based detection instead of a generic category
             # This allows the detect_runner_type function to match based on actual system specs
@@ -295,7 +306,7 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
         else:
             # If we can't normalize the requested label, check if it has "large" keywords
             # which typically indicate a paid larger runner
-            if any(keyword in requested_name for keyword in ['large', 'xlarge', 'bigger', 'premium']):
+            if any(keyword in requested_name for keyword in LARGE_RUNNER_KEYWORDS):
                 logging.info(f"is_runner_free: Requested runner '{requested_runner_name}' contains large runner keywords - treating as paid")
                 return False
             # Otherwise, fall back to detected runner type
