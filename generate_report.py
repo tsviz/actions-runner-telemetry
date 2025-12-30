@@ -116,6 +116,73 @@ FREE_RUNNER_LABELS = {
     'windows-11-arm'
 }
 
+def normalize_runner_label(name, runner_os_hint=None):
+    """Normalize non-standard runner names to known canonical types.
+
+    Examples:
+      - 'tsvi-linux8cores' → 'linux-8-core'
+      - 'linux-4c' → 'linux-4-core'
+      - 'win8core' → 'windows-8-core'
+      - 'macos-xlarge' → 'macos-latest-xlarge'
+    """
+    if not name:
+        return None
+    n = name.strip().lower()
+
+    def contains_any(s, keys):
+        return any(k in s for k in keys)
+
+    # Decide OS family
+    os_family = None
+    if contains_any(n, ['linux', 'ubuntu']):
+        os_family = 'linux'
+    elif contains_any(n, ['win', 'windows']):
+        os_family = 'windows'
+    elif contains_any(n, ['mac', 'macos', 'osx']):
+        os_family = 'macos'
+    elif runner_os_hint:
+        hint = runner_os_hint.lower()
+        if 'linux' in hint:
+            os_family = 'linux'
+        elif 'windows' in hint:
+            os_family = 'windows'
+        elif 'macos' in hint:
+            os_family = 'macos'
+
+    # Large sizes / xlarge hints for macOS
+    if os_family == 'macos':
+        if contains_any(n, ['xlarge', 'xl', '5-core', '5core']):
+            return 'macos-latest-xlarge'
+        if contains_any(n, ['large', '12-core', '12core']):
+            return 'macos-13-large'
+        if 'latest' in n:
+            return 'macos-latest'
+
+    # Windows mapping
+    if os_family == 'windows':
+        if contains_any(n, ['8-core', '8core', '8c']):
+            return 'windows-8-core'
+        if contains_any(n, ['4-core', '4core', '4c']):
+            return 'windows-4-core'
+        if 'latest' in n:
+            return 'windows-latest'
+
+    # Linux mapping
+    if os_family == 'linux':
+        if contains_any(n, ['8-core', '8cores', '8core', '8c']):
+            return 'linux-8-core'
+        if contains_any(n, ['4-core', '4cores', '4core', '4c']):
+            return 'linux-4-core'
+        if contains_any(n, ['ubuntu-24.04']):
+            return 'ubuntu-24.04'
+        if contains_any(n, ['ubuntu-22.04']):
+            return 'ubuntu-22.04'
+        if 'latest' in n:
+            return 'ubuntu-latest'
+
+    # No mapping
+    return None
+
 def get_repo_visibility_from_data(data):
     """Get repository visibility from telemetry data, with env fallback.
     
@@ -173,6 +240,13 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
     # This takes precedence because billing is based on what they requested
     if requested_runner_name:
         requested_name = requested_runner_name.lower()
+        # Try to normalize custom labels (e.g., tsvi-linux8cores)
+        normalized = normalize_runner_label(requested_name, os.environ.get('RUNNER_OS'))
+        if normalized:
+            requested_name = normalized
+        else:
+            # If we can't normalize the requested label, fall back to detected runner type
+            requested_name = runner_type
         # Explicitly requested larger runner = always paid
         if requested_name in ['linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
                              'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
@@ -301,22 +375,17 @@ def detect_runner_type(data, is_public_repo=None):
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
     runner_name = ctx.get('runner_name', '').lower()
+    # First, try normalizing custom labels to known canonical types
+    normalized = normalize_runner_label(runner_name, runner_os)
+    if normalized:
+        return normalized
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
     memory_mb = initial.get('memory_total_mb', 7000)  # Default to ~7GB
     memory_gb = memory_mb / 1024
     
-    # Check if this is a known custom/self-hosted runner
-    # Custom runner names typically won't match GitHub's standard patterns
-    is_custom_runner = (
-        runner_name and 
-        runner_name not in GITHUB_RUNNERS and
-        'github actions' not in runner_name  # GitHub Actions runners have generic names
-    )
-    
-    if is_custom_runner:
-        # For custom runners, return the runner name as identifier
-        return runner_name
+    # For non-standard names, do not return the name directly. Prefer matching by stats
+    # so that larger GitHub hosted runners (e.g., 4/8-core) are detected correctly.
     
     # Match based on actual system specs (CPU cores, memory, OS)
     # Find the best matching GitHub runner by specs
@@ -324,9 +393,7 @@ def detect_runner_type(data, is_public_repo=None):
     best_match_score = float('inf')
     
     for runner_key, specs in GITHUB_RUNNERS.items():
-        # For public repos, skip larger runners - assume standard runner if it's the best match
-        if is_public_repo and specs.get('is_larger'):
-            continue
+        # Consider both standard and larger runners; billing is handled separately.
         
         # Match by SKU prefix (e.g., 'linux', 'windows', 'macos')
         sku = specs.get('sku', '')
@@ -370,24 +437,15 @@ def detect_runner_type(data, is_public_repo=None):
         return best_match
     
     # Fallback: determine runner by CPU cores if no good match found
-    # For public repos, default to standard runners
     if 'linux' in runner_os:
-        if is_public_repo:
-            # Public repos get standard runners - default to ubuntu-latest
-            if cpu_count <= 1:
-                return 'ubuntu-slim'
-            else:
-                return 'ubuntu-latest'
+        if cpu_count <= 1:
+            return 'ubuntu-slim'
+        elif cpu_count >= 8:
+            return 'linux-8-core'
+        elif cpu_count >= 4:
+            return 'linux-4-core'
         else:
-            # Private repos could be using larger runners
-            if cpu_count <= 1:
-                return 'ubuntu-slim'
-            elif cpu_count >= 8:
-                return 'linux-8-core'
-            elif cpu_count >= 4:
-                return 'linux-4-core'
-            else:
-                return 'ubuntu-latest'
+            return 'ubuntu-latest'
     elif 'windows' in runner_os:
         if cpu_count >= 8:
             return 'windows-8-core'
