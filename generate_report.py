@@ -123,6 +123,9 @@ FREE_RUNNER_LABELS = {
     'windows-11-arm'
 }
 
+# Standard Ubuntu version labels (for exclusion in large runner detection)
+STANDARD_UBUNTU_VERSIONS = ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04']
+
 def normalize_runner_label(name, runner_os_hint=None):
     """Normalize non-standard runner names to known canonical types.
 
@@ -131,8 +134,8 @@ def normalize_runner_label(name, runner_os_hint=None):
       - 'linux-4c' → 'linux-4-core'
       - 'win8core' → 'windows-8-core'
       - 'macos-xlarge' → 'macos-latest-xlarge'
-      - 'ubuntu-large-xyz123' → 'linux-large-generic' (fallback for randomized large runners)
-      - 'randomized-linux-runner' → None (will use spec-based detection)
+      - 'ubuntu-large-xyz123' → None (triggers spec-based detection)
+      - 'randomized-linux-runner' → None (triggers spec-based detection)
     """
     if not name:
         logging.debug("normalize_runner_label: No name provided")
@@ -142,6 +145,11 @@ def normalize_runner_label(name, runner_os_hint=None):
 
     def contains_any(s, keys):
         return any(k in s for k in keys)
+    
+    def check_core_pattern(s, core_count):
+        """Helper to check for core count patterns (e.g., '8-core', '8cores', '8c')."""
+        patterns = [f'{core_count}-core', f'{core_count}cores', f'{core_count}core', f'{core_count}c']
+        return contains_any(s, patterns)
 
     # Decide OS family
     os_family = None
@@ -176,10 +184,10 @@ def normalize_runner_label(name, runner_os_hint=None):
 
     # Windows mapping
     if os_family == 'windows':
-        if contains_any(n, ['8-core', '8core', '8c', '8cores']):
+        if check_core_pattern(n, 8):
             logging.debug("normalize_runner_label: Normalized to 'windows-8-core'")
             return 'windows-8-core'
-        if contains_any(n, ['4-core', '4core', '4c', '4cores']):
+        if check_core_pattern(n, 4):
             logging.debug("normalize_runner_label: Normalized to 'windows-4-core'")
             return 'windows-4-core'
         # Handle randomized large runner names
@@ -192,15 +200,15 @@ def normalize_runner_label(name, runner_os_hint=None):
 
     # Linux mapping
     if os_family == 'linux':
-        if contains_any(n, ['8-core', '8cores', '8core', '8c']):
+        if check_core_pattern(n, 8):
             logging.debug("normalize_runner_label: Normalized to 'linux-8-core'")
             return 'linux-8-core'
-        if contains_any(n, ['4-core', '4cores', '4core', '4c']):
+        if check_core_pattern(n, 4):
             logging.debug("normalize_runner_label: Normalized to 'linux-4-core'")
             return 'linux-4-core'
         # Handle randomized large runner names (e.g., ubuntu-large-xyz123)
         # Exclude standard Ubuntu version labels (e.g., ubuntu-24.04, ubuntu-22.04)
-        is_standard_ubuntu_version = contains_any(n, ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04'])
+        is_standard_ubuntu_version = contains_any(n, STANDARD_UBUNTU_VERSIONS)
         if contains_any(n, ['large', 'xlarge', 'bigger', 'premium']) and not is_standard_ubuntu_version:
             logging.debug("normalize_runner_label: Linux large runner with randomized name detected, will use spec-based detection")
             # Return None to trigger spec-based detection instead of a generic category
