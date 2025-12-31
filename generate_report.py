@@ -1197,19 +1197,14 @@ For pricing details, see: [GitHub Actions Runner Pricing](https://docs.github.co
             # No standard upgrade available, or this is a custom runner
             # For custom runners, recommend contacting org admin to increase resources
             if is_custom_runner:
-                section += f'''
-**Priority: Contact Your Organization ⚠️**
+                                section += f'''
+**Priority: Optimize or Consider Hosted Option**
 
-Your job is **straining resources** on the custom runner **`{current_runner}`**:
+Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
-**Recommendation:** Contact your organization administrator to:
-1. Increase the resources (CPU cores / RAM) allocated to this runner
-2. Create a larger runner specifically for high-resource workloads
-3. Distribute your workload across multiple runners using workflow matrix
-
-**In the meantime, optimize your build:**
+**Near-term optimizations:**
 
 1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix:
    ```yaml
@@ -1217,19 +1212,16 @@ Your job is **straining resources** on the custom runner **`{current_runner}`**:
      matrix:
        shard: [1, 2, 3, 4]
    ```
-
 2. **Improve caching** - Cache dependencies to reduce build time
 
 3. **Profile slow steps** - Identify and optimize bottlenecks
 
 4. **Run targeted tests** - Only test changed modules, not full suite
 
-**Your Runner Details:**
-- Name: `{current_runner}`
-- CPU Cores: {utilization['total_cpu_cores']}
-- Total RAM: {utilization['total_ram_gb']:.1f} GB
+**Alternative to explore:** If resource needs remain high after optimization, consider using a **GitHub-hosted runner** family (standard or larger, depending on utilization). Hosted runners provide predictable capacity and simplified management.
 
-**For your organization admin:** This runner needs upgrade due to consistent 95%+ utilization during regular workloads.
+Pricing: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+Setup: [Manage Larger Runners](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/larger-runners/manage-larger-runners)
 
 '''
             elif current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
