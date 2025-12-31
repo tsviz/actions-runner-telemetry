@@ -12,8 +12,15 @@ import os
 import sys
 import json
 import math
+import logging
 from datetime import datetime
 from pathlib import Path
+
+# Configure logging for debug visibility
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s'
+)
 
 DATA_FILE = os.environ.get('TELEMETRY_DATA_FILE', '/tmp/telemetry_data.json')
 
@@ -116,6 +123,12 @@ FREE_RUNNER_LABELS = {
     'windows-11-arm'
 }
 
+# Standard Ubuntu version labels (for exclusion in large runner detection)
+STANDARD_UBUNTU_VERSIONS = ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04']
+
+# Keywords that indicate a large/premium runner (typically paid)
+LARGE_RUNNER_KEYWORDS = ['large', 'xlarge', 'bigger', 'premium']
+
 def normalize_runner_label(name, runner_os_hint=None):
     """Normalize non-standard runner names to known canonical types.
 
@@ -124,21 +137,38 @@ def normalize_runner_label(name, runner_os_hint=None):
       - 'linux-4c' → 'linux-4-core'
       - 'win8core' → 'windows-8-core'
       - 'macos-xlarge' → 'macos-latest-xlarge'
+      - 'ubuntu-large-xyz123' → None (triggers spec-based detection)
+      - 'randomized-linux-runner' → None (triggers spec-based detection)
     """
     if not name:
+        logging.debug("normalize_runner_label: No name provided")
         return None
     n = name.strip().lower()
+    logging.debug(f"normalize_runner_label: Attempting to normalize '{name}' (lowercase: '{n}')")
 
     def contains_any(s, keys):
         return any(k in s for k in keys)
+    
+    def check_core_pattern(s, core_count):
+        """Helper to check for core count patterns.
+        
+        Args:
+            s: String to search in
+            core_count: Number of cores (e.g., 4, 8)
+            
+        Returns:
+            True if any pattern is found (e.g., '4-core', '4cores', '4core', '4c')
+        """
+        patterns = [f'{core_count}-core', f'{core_count}cores', f'{core_count}core', f'{core_count}c']
+        return contains_any(s, patterns)
 
     # Decide OS family
     os_family = None
-    if contains_any(n, ['linux', 'ubuntu']):
+    if contains_any(n, ['linux', 'ubuntu', 'debian', 'rhel', 'centos']):
         os_family = 'linux'
     elif contains_any(n, ['win', 'windows']):
         os_family = 'windows'
-    elif contains_any(n, ['mac', 'macos', 'osx']):
+    elif contains_any(n, ['mac', 'macos', 'osx', 'darwin']):
         os_family = 'macos'
     elif runner_os_hint:
         hint = runner_os_hint.lower()
@@ -146,41 +176,67 @@ def normalize_runner_label(name, runner_os_hint=None):
             os_family = 'linux'
         elif 'windows' in hint:
             os_family = 'windows'
-        elif 'macos' in hint:
+        elif 'macos' in hint or 'darwin' in hint:
             os_family = 'macos'
+
+    logging.debug(f"normalize_runner_label: Detected OS family: {os_family}")
 
     # Large sizes / xlarge hints for macOS
     if os_family == 'macos':
         if contains_any(n, ['xlarge', 'xl', '5-core', '5core']):
+            logging.debug("normalize_runner_label: Normalized to 'macos-latest-xlarge'")
             return 'macos-latest-xlarge'
         if contains_any(n, ['large', '12-core', '12core']):
+            logging.debug("normalize_runner_label: Normalized to 'macos-13-large'")
             return 'macos-13-large'
         if 'latest' in n:
+            logging.debug("normalize_runner_label: Normalized to 'macos-latest'")
             return 'macos-latest'
 
     # Windows mapping
     if os_family == 'windows':
-        if contains_any(n, ['8-core', '8core', '8c']):
+        if check_core_pattern(n, 8):
+            logging.debug("normalize_runner_label: Normalized to 'windows-8-core'")
             return 'windows-8-core'
-        if contains_any(n, ['4-core', '4core', '4c']):
+        if check_core_pattern(n, 4):
+            logging.debug("normalize_runner_label: Normalized to 'windows-4-core'")
+            return 'windows-4-core'
+        # Handle randomized large runner names
+        if contains_any(n, LARGE_RUNNER_KEYWORDS):
+            logging.debug("normalize_runner_label: Windows large runner detected, using fallback 'windows-4-core'")
             return 'windows-4-core'
         if 'latest' in n:
+            logging.debug("normalize_runner_label: Normalized to 'windows-latest'")
             return 'windows-latest'
 
     # Linux mapping
     if os_family == 'linux':
-        if contains_any(n, ['8-core', '8cores', '8core', '8c']):
+        if check_core_pattern(n, 8):
+            logging.debug("normalize_runner_label: Normalized to 'linux-8-core'")
             return 'linux-8-core'
-        if contains_any(n, ['4-core', '4cores', '4core', '4c']):
+        if check_core_pattern(n, 4):
+            logging.debug("normalize_runner_label: Normalized to 'linux-4-core'")
             return 'linux-4-core'
+        # Handle randomized large runner names (e.g., ubuntu-large-xyz123)
+        # Exclude standard Ubuntu version labels (e.g., ubuntu-24.04, ubuntu-22.04)
+        is_standard_ubuntu_version = contains_any(n, STANDARD_UBUNTU_VERSIONS)
+        if contains_any(n, LARGE_RUNNER_KEYWORDS) and not is_standard_ubuntu_version:
+            logging.debug("normalize_runner_label: Linux large runner with randomized name detected, will use spec-based detection")
+            # Return None to trigger spec-based detection instead of a generic category
+            # This allows the detect_runner_type function to match based on actual system specs
+            return None
         if contains_any(n, ['ubuntu-24.04']):
+            logging.debug("normalize_runner_label: Normalized to 'ubuntu-24.04'")
             return 'ubuntu-24.04'
         if contains_any(n, ['ubuntu-22.04']):
+            logging.debug("normalize_runner_label: Normalized to 'ubuntu-22.04'")
             return 'ubuntu-22.04'
         if 'latest' in n:
+            logging.debug("normalize_runner_label: Normalized to 'ubuntu-latest'")
             return 'ubuntu-latest'
 
-    # No mapping
+    # No mapping - return None to trigger spec-based detection
+    logging.debug(f"normalize_runner_label: No normalization pattern matched for '{name}'")
     return None
 
 def get_repo_visibility_from_data(data):
@@ -236,28 +292,43 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
             github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower()
             is_public_repo = (github_repo_visibility == 'public')
     
+    logging.debug(f"is_runner_free: Checking runner_type='{runner_type}', is_public_repo={is_public_repo}, requested_runner_name='{requested_runner_name}'")
+    
     # Check requested runner name first (what they asked for, not what we detected)
     # This takes precedence because billing is based on what they requested
     if requested_runner_name:
         requested_name = requested_runner_name.lower()
-        # Try to normalize custom labels (e.g., tsvi-linux8cores)
+        # Try to normalize custom labels (e.g., tsvi-linux8cores, ubuntu-large-xyz123)
         normalized = normalize_runner_label(requested_name, os.environ.get('RUNNER_OS'))
         if normalized:
             requested_name = normalized
+            logging.debug(f"is_runner_free: Normalized requested name to '{requested_name}'")
         else:
-            # If we can't normalize the requested label, fall back to detected runner type
+            # If we can't normalize the requested label, check if it has "large" keywords
+            # which typically indicate a paid larger runner
+            if any(keyword in requested_name for keyword in LARGE_RUNNER_KEYWORDS):
+                logging.info(f"is_runner_free: Requested runner '{requested_runner_name}' contains large runner keywords - treating as paid")
+                return False
+            # Otherwise, fall back to detected runner type
+            logging.debug(f"is_runner_free: Could not normalize '{requested_runner_name}', using detected type '{runner_type}'")
             requested_name = runner_type
+        
         # Explicitly requested larger runner = always paid
         if requested_name in ['linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
                              'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
                              'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
                              'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge']:
+            logging.info(f"is_runner_free: Larger runner '{requested_name}' explicitly requested - always paid")
             return False
+        
         # Explicitly requested standard runner on public repo = free
         if is_public_repo and requested_name in FREE_RUNNER_LABELS:
+            logging.info(f"is_runner_free: Standard runner '{requested_name}' on public repo - free")
             return True
+        
         # Explicitly requested standard runner on private repo = paid
         if not is_public_repo and requested_name in FREE_RUNNER_LABELS:
+            logging.info(f"is_runner_free: Standard runner '{requested_name}' on private repo - paid")
             return False
     
     # Fallback: check detected runner type
@@ -266,12 +337,16 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
                        'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
                        'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
                        'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge']:
+        logging.info(f"is_runner_free: Detected larger runner '{runner_type}' - always paid")
         return False
     
     # Standard runners are free only on public repos
     if is_public_repo and runner_type in FREE_RUNNER_LABELS:
+        logging.info(f"is_runner_free: Standard runner '{runner_type}' on public repo - free")
         return True
     
+    # Default: assume paid for unknown/unclassified runners
+    logging.info(f"is_runner_free: Runner '{runner_type}' not in free labels, is_public={is_public_repo} - defaulting to paid")
     return False
 
 def get_runner_billing_context(runner_type, is_public_repo=None, requested_runner_name=None):
@@ -375,14 +450,21 @@ def detect_runner_type(data, is_public_repo=None):
     ctx = data.get('github_context', {})
     runner_os = ctx.get('runner_os', 'Linux').lower()
     runner_name = ctx.get('runner_name', '').lower()
+    
+    logging.info(f"detect_runner_type: Starting detection for runner_name='{runner_name}', runner_os='{runner_os}'")
+    
     # First, try normalizing custom labels to known canonical types
     normalized = normalize_runner_label(runner_name, runner_os)
     if normalized:
+        logging.info(f"detect_runner_type: Successfully normalized '{runner_name}' to '{normalized}'")
         return normalized
+    
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
     memory_mb = initial.get('memory_total_mb', 7000)  # Default to ~7GB
     memory_gb = memory_mb / 1024
+    
+    logging.info(f"detect_runner_type: System specs - CPU cores: {cpu_count}, Memory: {memory_gb:.1f}GB")
     
     # For non-standard names, do not return the name directly. Prefer matching by stats
     # so that larger GitHub hosted runners (e.g., 4/8-core) are detected correctly.
@@ -434,34 +516,57 @@ def detect_runner_type(data, is_public_repo=None):
     
     # If we found a good match (score < 15 allows for some variance), return it
     if best_match and best_match_score < 15:
+        logging.info(f"detect_runner_type: Matched to '{best_match}' with score {best_match_score:.2f}")
         return best_match
     
+    logging.warning(f"detect_runner_type: No good spec match found (best score: {best_match_score:.2f}), using fallback logic")
+    
     # Fallback: determine runner by CPU cores if no good match found
+    # This handles self-hosted runners or non-standard configurations
+    fallback_runner = None
     if 'linux' in runner_os:
         if cpu_count <= 1:
-            return 'ubuntu-slim'
+            fallback_runner = 'ubuntu-slim'
         elif cpu_count >= 8:
-            return 'linux-8-core'
+            fallback_runner = 'linux-8-core'
         elif cpu_count >= 4:
-            return 'linux-4-core'
+            fallback_runner = 'linux-4-core'
         else:
-            return 'ubuntu-latest'
+            fallback_runner = 'ubuntu-latest'
     elif 'windows' in runner_os:
         if cpu_count >= 8:
-            return 'windows-8-core'
+            fallback_runner = 'windows-8-core'
         elif cpu_count >= 4:
-            return 'windows-4-core'
+            fallback_runner = 'windows-4-core'
         else:
-            return 'windows-latest'
+            fallback_runner = 'windows-latest'
     elif 'macos' in runner_os:
         if cpu_count >= 12:
-            return 'macos-13-large'
+            fallback_runner = 'macos-13-large'
         elif cpu_count >= 5:
-            return 'macos-latest-xlarge'
+            fallback_runner = 'macos-latest-xlarge'
         else:
-            return 'macos-latest'
+            fallback_runner = 'macos-latest'
     else:
-        return 'ubuntu-latest'
+        # Completely unknown OS - default to ubuntu-latest
+        fallback_runner = 'ubuntu-latest'
+        logging.warning(f"detect_runner_type: Unknown OS '{runner_os}', defaulting to 'ubuntu-latest'")
+    
+    # Check if this appears to be a self-hosted runner
+    # Self-hosted runners typically have non-standard specs or runner names
+    is_likely_self_hosted = (
+        'self-hosted' in runner_name or 
+        best_match_score >= 15 or
+        runner_name not in ['', 'github actions'] and 
+        not any(std in runner_name for std in ['ubuntu', 'windows', 'macos', 'linux'])
+    )
+    
+    if is_likely_self_hosted:
+        logging.info(f"detect_runner_type: Detected likely self-hosted runner, using fallback '{fallback_runner}' (unclassified)")
+    else:
+        logging.info(f"detect_runner_type: Using fallback '{fallback_runner}' based on CPU cores")
+    
+    return fallback_runner
 
 def calculate_utilization_score(data):
     """Calculate the overall runner utilization score."""
