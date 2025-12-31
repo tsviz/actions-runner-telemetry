@@ -129,6 +129,22 @@ STANDARD_UBUNTU_VERSIONS = ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04']
 # Keywords that indicate a large/premium runner (typically paid)
 LARGE_RUNNER_KEYWORDS = ['large', 'xlarge', 'bigger', 'premium']
 
+# Canonical GitHub runner labels (exact match only)
+CANONICAL_RUNNER_LABELS = {
+    # Standard Linux
+    'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
+    # Larger Linux
+    'linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
+    # Standard Windows
+    'windows-latest', 'windows-2025', 'windows-2022',
+    # Larger Windows
+    'windows-4-core', 'windows-8-core',
+    # Standard macOS
+    'macos-latest',
+    # Larger macOS
+    'macos-13-large', 'macos-latest-xlarge'
+}
+
 def normalize_runner_label(name, runner_os_hint=None):
     """Normalize non-standard runner names to known canonical types.
 
@@ -148,19 +164,6 @@ def normalize_runner_label(name, runner_os_hint=None):
 
     def contains_any(s, keys):
         return any(k in s for k in keys)
-    
-    def check_core_pattern(s, core_count):
-        """Helper to check for core count patterns.
-        
-        Args:
-            s: String to search in
-            core_count: Number of cores (e.g., 4, 8)
-            
-        Returns:
-            True if any pattern is found (e.g., '4-core', '4cores', '4core', '4c')
-        """
-        patterns = [f'{core_count}-core', f'{core_count}cores', f'{core_count}core', f'{core_count}c']
-        return contains_any(s, patterns)
 
     # Decide OS family
     os_family = None
@@ -181,62 +184,13 @@ def normalize_runner_label(name, runner_os_hint=None):
 
     logging.debug(f"normalize_runner_label: Detected OS family: {os_family}")
 
-    # Large sizes / xlarge hints for macOS
-    if os_family == 'macos':
-        if contains_any(n, ['xlarge', 'xl', '5-core', '5core']):
-            logging.debug("normalize_runner_label: Normalized to 'macos-latest-xlarge'")
-            return 'macos-latest-xlarge'
-        if contains_any(n, ['large', '12-core', '12core']):
-            logging.debug("normalize_runner_label: Normalized to 'macos-13-large'")
-            return 'macos-13-large'
-        if 'latest' in n:
-            logging.debug("normalize_runner_label: Normalized to 'macos-latest'")
-            return 'macos-latest'
-
-    # Windows mapping
-    if os_family == 'windows':
-        if check_core_pattern(n, 8):
-            logging.debug("normalize_runner_label: Normalized to 'windows-8-core'")
-            return 'windows-8-core'
-        if check_core_pattern(n, 4):
-            logging.debug("normalize_runner_label: Normalized to 'windows-4-core'")
-            return 'windows-4-core'
-        # Handle randomized large runner names
-        if contains_any(n, LARGE_RUNNER_KEYWORDS):
-            logging.debug("normalize_runner_label: Windows large runner detected, using fallback 'windows-4-core'")
-            return 'windows-4-core'
-        if 'latest' in n:
-            logging.debug("normalize_runner_label: Normalized to 'windows-latest'")
-            return 'windows-latest'
-
-    # Linux mapping
-    if os_family == 'linux':
-        if check_core_pattern(n, 8):
-            logging.debug("normalize_runner_label: Normalized to 'linux-8-core'")
-            return 'linux-8-core'
-        if check_core_pattern(n, 4):
-            logging.debug("normalize_runner_label: Normalized to 'linux-4-core'")
-            return 'linux-4-core'
-        # Handle randomized large runner names (e.g., ubuntu-large-xyz123)
-        # Exclude standard Ubuntu version labels (e.g., ubuntu-24.04, ubuntu-22.04)
-        is_standard_ubuntu_version = contains_any(n, STANDARD_UBUNTU_VERSIONS)
-        if contains_any(n, LARGE_RUNNER_KEYWORDS) and not is_standard_ubuntu_version:
-            logging.debug("normalize_runner_label: Linux large runner with randomized name detected, will use spec-based detection")
-            # Return None to trigger spec-based detection instead of a generic category
-            # This allows the detect_runner_type function to match based on actual system specs
-            return None
-        if contains_any(n, ['ubuntu-24.04']):
-            logging.debug("normalize_runner_label: Normalized to 'ubuntu-24.04'")
-            return 'ubuntu-24.04'
-        if contains_any(n, ['ubuntu-22.04']):
-            logging.debug("normalize_runner_label: Normalized to 'ubuntu-22.04'")
-            return 'ubuntu-22.04'
-        if 'latest' in n:
-            logging.debug("normalize_runner_label: Normalized to 'ubuntu-latest'")
-            return 'ubuntu-latest'
+    # Only accept exact canonical labels; do not infer from patterns or keywords
+    if n in CANONICAL_RUNNER_LABELS:
+        logging.debug(f"normalize_runner_label: Exact canonical match for '{n}'")
+        return n
 
     # No mapping - return None to trigger spec-based detection
-    logging.debug(f"normalize_runner_label: No normalization pattern matched for '{name}'")
+    logging.debug(f"normalize_runner_label: Non-canonical label '{name}' → using spec-based detection")
     return None
 
 def get_repo_visibility_from_data(data):
@@ -294,23 +248,16 @@ def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None)
     
     logging.debug(f"is_runner_free: Checking runner_type='{runner_type}', is_public_repo={is_public_repo}, requested_runner_name='{requested_runner_name}'")
     
-    # Check requested runner name first (what they asked for, not what we detected)
-    # This takes precedence because billing is based on what they requested
+    # Consider requested runner name only if it is a canonical GitHub label.
+    # Do not infer billing from arbitrary/custom names; rely on detected specs.
     if requested_runner_name:
         requested_name = requested_runner_name.lower()
-        # Try to normalize custom labels (e.g., tsvi-linux8cores, ubuntu-large-xyz123)
         normalized = normalize_runner_label(requested_name, os.environ.get('RUNNER_OS'))
         if normalized:
             requested_name = normalized
             logging.debug(f"is_runner_free: Normalized requested name to '{requested_name}'")
         else:
-            # If we can't normalize the requested label, check if it has "large" keywords
-            # which typically indicate a paid larger runner
-            if any(keyword in requested_name for keyword in LARGE_RUNNER_KEYWORDS):
-                logging.info(f"is_runner_free: Requested runner '{requested_runner_name}' contains large runner keywords - treating as paid")
-                return False
-            # Otherwise, fall back to detected runner type
-            logging.debug(f"is_runner_free: Could not normalize '{requested_runner_name}', using detected type '{runner_type}'")
+            logging.debug(f"is_runner_free: Non-canonical requested name '{requested_runner_name}' — using detected type '{runner_type}'")
             requested_name = runner_type
         
         # Explicitly requested larger runner = always paid

@@ -32,26 +32,26 @@ class TestNormalizeRunnerLabel(unittest.TestCase):
         """Test normalization of Linux large runners."""
         self.assertEqual(normalize_runner_label('linux-8-core'), 'linux-8-core')
         self.assertEqual(normalize_runner_label('linux-4-core'), 'linux-4-core')
-        # Non-standard variations
-        self.assertEqual(normalize_runner_label('linux8cores'), 'linux-8-core')
-        self.assertEqual(normalize_runner_label('linux-8c'), 'linux-8-core')
-        self.assertEqual(normalize_runner_label('linux4core'), 'linux-4-core')
+        # Non-standard variations should not normalize
+        self.assertIsNone(normalize_runner_label('linux8cores'))
+        self.assertIsNone(normalize_runner_label('linux-8c'))
+        self.assertIsNone(normalize_runner_label('linux4core'))
     
     def test_windows_large_runners(self):
         """Test normalization of Windows large runners."""
         self.assertEqual(normalize_runner_label('windows-8-core'), 'windows-8-core')
         self.assertEqual(normalize_runner_label('windows-4-core'), 'windows-4-core')
-        # Non-standard variations
-        self.assertEqual(normalize_runner_label('win8core'), 'windows-8-core')
-        self.assertEqual(normalize_runner_label('windows-4c'), 'windows-4-core')
+        # Non-standard variations should not normalize
+        self.assertIsNone(normalize_runner_label('win8core'))
+        self.assertIsNone(normalize_runner_label('windows-4c'))
     
     def test_macos_large_runners(self):
         """Test normalization of macOS large runners."""
         self.assertEqual(normalize_runner_label('macos-13-large'), 'macos-13-large')
         self.assertEqual(normalize_runner_label('macos-latest-xlarge'), 'macos-latest-xlarge')
-        # Non-standard variations
-        self.assertEqual(normalize_runner_label('macos-xlarge'), 'macos-latest-xlarge')
-        self.assertEqual(normalize_runner_label('macos-large'), 'macos-13-large')
+        # Non-standard variations should not normalize
+        self.assertIsNone(normalize_runner_label('macos-xlarge'))
+        self.assertIsNone(normalize_runner_label('macos-large'))
     
     def test_randomized_large_runner_names(self):
         """Test handling of randomized large runner names (e.g., ubuntu-large-xyz123)."""
@@ -61,28 +61,26 @@ class TestNormalizeRunnerLabel(unittest.TestCase):
         self.assertIsNone(normalize_runner_label('ubuntu-bigger-random'))
         self.assertIsNone(normalize_runner_label('linux-premium-runner'))
         
-        # Windows randomized large runners should normalize to standard large runner
-        self.assertEqual(normalize_runner_label('windows-large-xyz'), 'windows-4-core')
-        self.assertEqual(normalize_runner_label('win-xlarge-123'), 'windows-4-core')
+        # Windows randomized large runners should not normalize
+        self.assertIsNone(normalize_runner_label('windows-large-xyz'))
+        self.assertIsNone(normalize_runner_label('win-xlarge-123'))
     
     def test_custom_runner_names(self):
         """Test custom/self-hosted runner names."""
-        # Custom names with OS hints
-        self.assertEqual(normalize_runner_label('tsvi-linux8cores'), 'linux-8-core')
-        self.assertEqual(normalize_runner_label('custom-ubuntu-4c'), 'linux-4-core')
-        
+        # Custom names should not normalize
+        self.assertIsNone(normalize_runner_label('tsvi-linux8cores'))
+        self.assertIsNone(normalize_runner_label('custom-ubuntu-4c'))
         # Names that can't be normalized return None
         self.assertIsNone(normalize_runner_label('my-custom-runner'))
         self.assertIsNone(normalize_runner_label('self-hosted-1'))
     
     def test_runner_os_hint(self):
         """Test OS hint parameter when name doesn't contain OS info."""
-        # When name is ambiguous, OS hint should help
+        # OS hint should not normalize arbitrary names; rely on spec detection later
         result = normalize_runner_label('8-core-runner', runner_os_hint='Linux')
-        self.assertEqual(result, 'linux-8-core')
-        
+        self.assertIsNone(result)
         result = normalize_runner_label('4-core-runner', runner_os_hint='Windows')
-        self.assertEqual(result, 'windows-4-core')
+        self.assertIsNone(result)
     
     def test_empty_or_none_input(self):
         """Test handling of empty or None input."""
@@ -235,23 +233,20 @@ class TestIsRunnerFree(unittest.TestCase):
     
     @patch.dict(os.environ, {'RUNNER_OS': 'Linux'})
     def test_randomized_large_runner_name_paid(self):
-        """Test that randomized large runner names are treated as paid."""
-        # Request name with "large" keyword should be treated as paid
-        self.assertFalse(
-            is_runner_free('ubuntu-latest', is_public_repo=True, 
+        """Randomized large runner names should not affect billing without canonical labels."""
+        # On public repo, billing should rely on detected runner type (ubuntu-latest → free)
+        self.assertTrue(
+            is_runner_free('ubuntu-latest', is_public_repo=True,
                           requested_runner_name='ubuntu-large-xyz123')
         )
     
     @patch.dict(os.environ, {'RUNNER_OS': 'Linux'})
     def test_custom_runner_name_normalization(self):
-        """Test that custom runner names are properly normalized for billing."""
-        # Custom name that normalizes to large runner
-        self.assertFalse(
+        """Custom runner names should not drive billing; rely on detected type."""
+        self.assertTrue(
             is_runner_free('ubuntu-latest', is_public_repo=True,
                           requested_runner_name='linux-8cores-custom')
         )
-        
-        # Custom name that normalizes to standard runner
         self.assertTrue(
             is_runner_free('ubuntu-latest', is_public_repo=True,
                           requested_runner_name='ubuntu-latest-custom')
@@ -284,10 +279,10 @@ class TestIntegration(unittest.TestCase):
         runner_type = detect_runner_type(data)
         self.assertEqual(runner_type, 'ubuntu-latest')
         
-        # Check if it's free (should be paid since requested name has "large" keyword)
+        # Billing should rely on detected type; on public repo ubuntu-latest is free
         is_free = is_runner_free(runner_type, is_public_repo=True,
-                                requested_runner_name='ubuntu-large-abc123')
-        self.assertFalse(is_free)
+                    requested_runner_name='ubuntu-large-abc123')
+        self.assertTrue(is_free)
     
     def test_standard_runner_end_to_end(self):
         """Test complete flow for standard runner."""
