@@ -1687,7 +1687,14 @@ This shows the average CPU and memory usage during your job:
 |:--------|------:|--------:|:-------------|
 '''
         for p in top_procs.get('by_cpu', [])[:5]:
-            cmd = p['command'].split('/')[-1].split()[0][:30]
+            raw_cmd = p.get('command') or ''
+            raw_cmd = str(raw_cmd).strip()
+            if not raw_cmd:
+                cmd = 'unknown'
+            else:
+                base = raw_cmd.split('/')[-1]
+                tokens = base.split()
+                cmd = (tokens[0] if tokens else base)[:30] or 'unknown'
             # Find matching description
             desc = ''
             for key, val in process_descriptions.items():
