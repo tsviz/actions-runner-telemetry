@@ -62,6 +62,10 @@ GITHUB_RUNNERS = {
     # Larger Linux x64 runners (GitHub Team/Enterprise Cloud)
     'linux-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 14, 'name': 'Linux 4-core Larger Runner', 'sku': 'linux_4_core', 'is_larger': True},
     'linux-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Linux 8-core Larger Runner', 'sku': 'linux_8_core', 'is_larger': True},
+    'linux-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.042, 'storage_gb': 14, 'name': 'Linux 16-core Larger Runner', 'sku': 'linux_16_core', 'is_larger': True},
+    'linux-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.082, 'storage_gb': 14, 'name': 'Linux 32-core Larger Runner', 'sku': 'linux_32_core', 'is_larger': True},
+    'linux-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.162, 'storage_gb': 14, 'name': 'Linux 64-core Larger Runner', 'sku': 'linux_64_core', 'is_larger': True},
+    'linux-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.242, 'storage_gb': 14, 'name': 'Linux 96-core Larger Runner', 'sku': 'linux_96_core', 'is_larger': True},
     
     # Larger Linux ARM64 runners (GitHub Team/Enterprise Cloud)
     'linux-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core Larger Runner', 'sku': 'linux_4_core_arm', 'is_larger': True},
@@ -78,6 +82,10 @@ GITHUB_RUNNERS = {
     # Larger Windows x64 runners (GitHub Team/Enterprise Cloud)
     'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Windows 4-core Larger Runner', 'sku': 'windows_4_core', 'is_larger': True},
     'windows-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 14, 'name': 'Windows 8-core Larger Runner', 'sku': 'windows_8_core', 'is_larger': True},
+    'windows-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.082, 'storage_gb': 14, 'name': 'Windows 16-core Larger Runner', 'sku': 'windows_16_core', 'is_larger': True},
+    'windows-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.162, 'storage_gb': 14, 'name': 'Windows 32-core Larger Runner', 'sku': 'windows_32_core', 'is_larger': True},
+    'windows-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.322, 'storage_gb': 14, 'name': 'Windows 64-core Larger Runner', 'sku': 'windows_64_core', 'is_larger': True},
+    'windows-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.482, 'storage_gb': 14, 'name': 'Windows 96-core Larger Runner', 'sku': 'windows_96_core', 'is_larger': True},
     
     # Larger Windows ARM64 runners (GitHub Team/Enterprise Cloud)
     'windows-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Windows ARM 4-core Larger Runner', 'sku': 'windows_4_core_arm', 'is_larger': True},
@@ -142,7 +150,8 @@ CANONICAL_RUNNER_LABELS = {
     # Standard macOS
     'macos-latest',
     # Larger macOS
-    'macos-13-large', 'macos-latest-xlarge'
+    'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
+    'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge'
 }
 
 def normalize_runner_label(name, runner_os_hint=None):
@@ -382,6 +391,71 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
     else:
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
+def detect_hosting_type(data):
+    """Classify hosting type (GitHub-hosted vs self-hosted) using override, environment, and path heuristics.
+
+    Precedence:
+      1) Explicit override via env `HOSTING_TYPE` (hosted/self).
+      2) `RUNNER_ENVIRONMENT` if set to 'github-hosted' or 'self-hosted'.
+      3) Heuristics from image variables, tool cache, and workspace path.
+
+    Strong hosted signals:
+      - 'ImageOS' or 'ImageVersion' environment variables (hosted images)
+      - 'AGENT_TOOLSDIRECTORY' or 'RUNNER_TOOL_CACHE' containing 'hostedtoolcache'
+      - 'GITHUB_WORKSPACE' path matching known hosted patterns (e.g., '/home/runner/', 'C:\\Users\\runneradmin')
+
+    Returns dict: { 'is_github_hosted': True|False|None, 'signals': [str] }
+    """
+    signals = []
+    env = os.environ
+
+    # 1) Explicit override
+    override = (env.get('HOSTING_TYPE') or '').strip().lower()
+    if override:
+        if override in {'hosted', 'github-hosted', 'github', 'gh'}:
+            return {'is_github_hosted': True, 'signals': [f'override={override}']}
+        if override in {'self', 'self-hosted', 'private'}:
+            return {'is_github_hosted': False, 'signals': [f'override={override}']}
+        # Unrecognized values: keep for diagnostics, but continue heuristics
+        signals.append(f'override_unrecognized={override}')
+
+    # 2) Primary signal per Variables reference
+    runner_env = (env.get('RUNNER_ENVIRONMENT') or '').lower()
+    if runner_env in ['github-hosted', 'self-hosted']:
+        return {
+            'is_github_hosted': (runner_env == 'github-hosted'),
+            'signals': [f'runner_environment={runner_env}']
+        }
+
+    # 3) Heuristics
+    image_os = env.get('ImageOS') or env.get('IMAGE_OS')
+    image_ver = env.get('ImageVersion') or env.get('IMAGE_VERSION')
+    if image_os or image_ver:
+        signals.append('image_vars')
+
+    agent_tools = env.get('AGENT_TOOLSDIRECTORY', '')
+    if agent_tools and 'hostedtoolcache' in agent_tools.lower():
+        signals.append('hostedtoolcache')
+
+    runner_tool_cache = env.get('RUNNER_TOOL_CACHE', '')
+    if runner_tool_cache and 'hostedtoolcache' in runner_tool_cache.lower():
+        signals.append('runner_tool_cache')
+
+    workspace = env.get('GITHUB_WORKSPACE', '')
+    ws_l = workspace.lower()
+    if any(p in ws_l for p in ['/home/runner/', '/home/runner/work/', 'c:\\users\\runneradmin', '/users/runner/work']):
+        signals.append('hosted_workspace_path')
+
+    # Runner name patterns: only treat explicit 'self-hosted' as a negative signal
+    rname = (data.get('github_context', {}).get('runner_name') or '').lower()
+    if 'self-hosted' in rname and not signals:
+        return {'is_github_hosted': False, 'signals': ['label_self_hosted']}
+
+    if signals:
+        return {'is_github_hosted': True, 'signals': signals}
+
+    return {'is_github_hosted': None, 'signals': signals if signals else []}
+
 def detect_runner_type(data, is_public_repo=None):
     """Detect the runner type by matching actual system specs to known GitHub runners.
     
@@ -399,6 +473,8 @@ def detect_runner_type(data, is_public_repo=None):
     runner_name = ctx.get('runner_name', '').lower()
     
     logging.info(f"detect_runner_type: Starting detection for runner_name='{runner_name}', runner_os='{runner_os}'")
+
+    hosting = detect_hosting_type(data)
     
     # First, try normalizing custom labels to known canonical types
     normalized = normalize_runner_label(runner_name, runner_os)
@@ -420,9 +496,23 @@ def detect_runner_type(data, is_public_repo=None):
     # Find the best matching GitHub runner by specs
     best_match = None
     best_match_score = float('inf')
-    
+
+    # Heuristic: if the runner name looks self-hosted and OS is Linux/Windows,
+    # avoid matching 16+ core tiers during detection to preserve fallback behavior.
+    def _looks_self_hosted(name: str) -> bool:
+        if not name:
+            return False
+        tokens = ['ubuntu', 'windows', 'macos', 'linux']
+        return ('self-hosted' in name) or (not any(t in name for t in tokens))
+    is_hosted_hint = hosting.get('is_github_hosted') is True
+    restrict_to_upto_8 = (not is_hosted_hint) and _looks_self_hosted(runner_name) and (('linux' in runner_os) or ('windows' in runner_os))
+
     for runner_key, specs in GITHUB_RUNNERS.items():
         # Consider both standard and larger runners; billing is handled separately.
+        if restrict_to_upto_8 and specs.get('vcpus', 0) > 8:
+            sku_tmp = specs.get('sku', '').lower()
+            if ('linux' in sku_tmp) or ('windows' in sku_tmp):
+                continue
         
         # Match by SKU prefix (e.g., 'linux', 'windows', 'macos')
         sku = specs.get('sku', '')
@@ -463,6 +553,19 @@ def detect_runner_type(data, is_public_repo=None):
     
     # If we found a good match (score < 15 allows for some variance), return it
     if best_match and best_match_score < 15:
+        # Prefer standard free runner labels for public repositories
+        if is_public_repo:
+            best_specs = GITHUB_RUNNERS.get(best_match, {})
+            if best_specs.get('is_larger'):
+                if 'linux' in runner_os:
+                    logging.info("detect_runner_type: Public repo - overriding larger match to 'ubuntu-latest'")
+                    return 'ubuntu-latest'
+                elif 'windows' in runner_os:
+                    logging.info("detect_runner_type: Public repo - overriding larger match to 'windows-latest'")
+                    return 'windows-latest'
+                elif 'macos' in runner_os:
+                    logging.info("detect_runner_type: Public repo - overriding larger match to 'macos-latest'")
+                    return 'macos-latest'
         logging.info(f"detect_runner_type: Matched to '{best_match}' with score {best_match_score:.2f}")
         return best_match
     
@@ -507,7 +610,25 @@ def detect_runner_type(data, is_public_repo=None):
         runner_name not in ['', 'github actions'] and 
         not any(std in runner_name for std in ['ubuntu', 'windows', 'macos', 'linux'])
     )
+
+    # Hosting-type hint can override label-based guess when strong signals exist
+    if hosting.get('is_github_hosted') is True:
+        logging.info("detect_runner_type: Hosting-type signals indicate GitHub-hosted")
+        is_likely_self_hosted = False
+    elif hosting.get('is_github_hosted') is False:
+        logging.info("detect_runner_type: Hosting-type signals indicate Self-hosted")
+        is_likely_self_hosted = True
     
+    # For public repositories, prefer standard free runner labels for billing/messaging
+    if is_public_repo:
+        if 'linux' in runner_os:
+            fallback_runner = 'ubuntu-latest'
+        elif 'windows' in runner_os:
+            fallback_runner = 'windows-latest'
+        elif 'macos' in runner_os:
+            fallback_runner = 'macos-latest'
+        logging.info(f"detect_runner_type: Public repo - preferring standard runner '{fallback_runner}' for billing/messaging")
+
     if is_likely_self_hosted:
         logging.info(f"detect_runner_type: Detected likely self-hosted runner, using fallback '{fallback_runner}' (unclassified)")
     else:
@@ -567,6 +688,25 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     runner_type = detected_runner_type
     
     runner_specs = GITHUB_RUNNERS.get(runner_type, GITHUB_RUNNERS['ubuntu-latest']).copy()
+
+    # Determine whether this appears to be a self-hosted runner based on name patterns
+    ctx = data.get('github_context', {})
+    requested_name = (ctx.get('runner_name') or '').lower()
+    def _is_self_hosted_name(name: str) -> bool:
+        if not name:
+            return False
+        if 'self-hosted' in name:
+            return True
+        # If the name does not contain any canonical tokens, assume self-hosted
+        tokens = ['ubuntu', 'windows', 'macos', 'linux']
+        return not any(t in name for t in tokens)
+    hosting = detect_hosting_type(data)
+    if hosting.get('is_github_hosted') is True:
+        is_self_hosted_context = False
+    elif hosting.get('is_github_hosted') is False:
+        is_self_hosted_context = True
+    else:
+        is_self_hosted_context = _is_self_hosted_name(requested_name)
     
     # For private repos with free public runners, use the private specs and cost
     if not is_public_repo and runner_specs.get('is_free_public'):
@@ -578,7 +718,96 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
         if 'name' in runner_specs and '4-core' in runner_specs['name']:
             runner_specs['name'] = runner_specs['name'].replace('4-core', '2-core')
     
-    current_cost = duration_minutes * runner_specs['cost_per_min']
+    # If self-hosted, we don't assume GitHub-hosted pricing for "current" cost
+    current_cost = None if is_self_hosted_context else duration_minutes * runner_specs['cost_per_min']
+
+    # Compute a true comparable (equal size) and nearest alternatives for self-hosted
+    comparable_key = None
+    nearest_larger_key = None
+    nearest_smaller_key = None
+    equivalent_key = None
+    equivalent_reason = None
+    if is_self_hosted_context:
+        init = data.get('initial_snapshot', {})
+        cpu_count = init.get('cpu_count') or init.get('cpus') or 0
+        mem_mb = (init.get('memory') or {}).get('total_mb', 0)
+        mem_gb = mem_mb / 1024 if mem_mb else 0
+
+        # Determine OS family from detected label
+        def _os_family(label: str) -> str:
+            if label.startswith('windows'):
+                return 'windows'
+            if label.startswith('macos'):
+                return 'macos'
+            return 'linux'
+        current_family = _os_family(detected_runner_type)
+
+        # Filter catalog by OS family only (avoid cross-OS comparisons)
+        catalog = {k: v for k, v in GITHUB_RUNNERS.items() if _os_family(k) == current_family}
+
+        # Exact-core matches
+        equal = [(k, v) for k, v in catalog.items() if v.get('vcpus') == cpu_count]
+        if equal:
+            # Choose closest RAM match
+            comparable_key = min(equal, key=lambda kv: abs((kv[1].get('ram_gb') or 0) - mem_gb))[0]
+        else:
+            # Nearest smaller and larger by cores
+            smaller = sorted([(k, v) for k, v in catalog.items() if v.get('vcpus', 0) < cpu_count], key=lambda kv: kv[1]['vcpus'], reverse=True)
+            larger = sorted([(k, v) for k, v in catalog.items() if v.get('vcpus', 0) > cpu_count], key=lambda kv: kv[1]['vcpus'])
+            if larger:
+                nearest_larger_key = larger[0][0]
+            if smaller:
+                nearest_smaller_key = smaller[0][0]
+
+        # Compute an "equivalent" hosted option that meets peak usage + headroom
+        try:
+            headroom = float(os.getenv('EQUIV_HEADROOM', '1.25'))
+        except ValueError:
+            headroom = 1.25
+        # Use measured peak percentages from utilization to infer needed resources
+        peak_cpu_pct = utilization.get('max_cpu_pct', 0)
+        peak_mem_pct = utilization.get('max_mem_pct', 0)
+        needed_vcpus = max(1, math.ceil((peak_cpu_pct / 100.0) * cpu_count * headroom)) if cpu_count else 1
+        needed_ram_gb = 0
+        if mem_gb:
+            needed_ram_gb = math.ceil((peak_mem_pct / 100.0) * mem_gb * headroom)
+
+        # Choose the smallest-cost option that satisfies both vCPU and RAM needs.
+        def _effective_specs(label: str, specs: dict):
+            v = specs.get('vcpus', 0)
+            r = specs.get('ram_gb', 0)
+            c = specs.get('cost_per_min', 0)
+            # For private repos, standard public SKUs may have different effective specs and pricing
+            if (not is_public_repo) and specs.get('is_free_public'):
+                v = specs.get('private_vcpus', v)
+                r = specs.get('private_ram_gb', r)
+                # If no private price, skip by returning None
+                priv = specs.get('private_cost_per_min')
+                if priv is None:
+                    return None
+                c = priv
+            return {'vcpus': v, 'ram_gb': r, 'cost_per_min': c, 'name': specs.get('name', label), 'label': label}
+
+        candidates = []
+        for k, v in catalog.items():
+            eff = _effective_specs(k, v)
+            if not eff:
+                continue
+            if eff['vcpus'] >= needed_vcpus and (needed_ram_gb == 0 or eff['ram_gb'] >= needed_ram_gb):
+                candidates.append(eff)
+
+        if candidates:
+            # Prefer minimal vCPU, then lowest cost
+            candidates.sort(key=lambda e: (e['vcpus'], e['cost_per_min']))
+            chosen = candidates[0]
+            equivalent_key = chosen['label']
+            # Build reason string
+            hr_pct = int((headroom - 1.0) * 100)
+            reason_bits = [f"Needs ≥{needed_vcpus} vCPU"]
+            if needed_ram_gb:
+                reason_bits.append(f"and ≥{needed_ram_gb} GB RAM")
+            reason_bits.append(f"(peak + {hr_pct}% headroom)")
+            equivalent_reason = ' '.join(reason_bits)
     
     right_sized_runner = runner_type
     potential_savings = 0
@@ -586,13 +815,52 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     avg_cpu = utilization['avg_cpu_pct']
     avg_mem = utilization['avg_mem_pct']
     
+    # Helper to derive OS family from label
+    def _os_family(label: str) -> str:
+        if label.startswith('windows'):
+            return 'windows'
+        if label.startswith('macos'):
+            return 'macos'
+        return 'linux'
+
+    # Helper to derive arch family (x64 vs ARM vs mac variants)
+    def _arch_family(label: str) -> str:
+        l = label.lower()
+        if 'arm' in l:
+            return 'arm'
+        # macOS: treat Apple Silicon as 'apple' and Intel as 'intel'
+        if l.startswith('macos'):
+            if 'intel' in l or '-13' in l or 'large' in l and 'xlarge' not in l:
+                return 'intel'
+            return 'apple'
+        return 'x64'
+
+    current_family = _os_family(runner_type)
+    current_arch = _arch_family(runner_type)
+
     # Check for right-sizing opportunity (under 40% utilization)
     if avg_cpu < 40 and avg_mem < 40:
-        # Find smaller runner that could work
+        # Find smaller runner in the SAME OS family that could work
         for name, specs in sorted(GITHUB_RUNNERS.items(), key=lambda x: x[1]['cost_per_min']):
-            if specs['cost_per_min'] < runner_specs['cost_per_min']:
-                new_cost = duration_minutes * specs['cost_per_min']
-                if new_cost < current_cost:
+            if _os_family(name) != current_family:
+                continue
+            # Enforce same architecture family to avoid cross-arch recommendations
+            if _arch_family(name) != current_arch:
+                continue
+            # Skip public-only free SKUs when analyzing private repos (no valid private pricing)
+            if (not is_public_repo) and specs.get('is_free_public') and not specs.get('private_cost_per_min'):
+                continue
+            # Compute effective candidate cost respecting repo visibility
+            candidate_cost_per_min = specs['cost_per_min']
+            if (not is_public_repo) and specs.get('is_free_public') and specs.get('private_cost_per_min') is not None:
+                candidate_cost_per_min = specs['private_cost_per_min']
+            # Avoid zero-cost placeholders for private repos
+            if (not is_public_repo) and candidate_cost_per_min == 0:
+                continue
+            # Only consider cheaper runners
+            if candidate_cost_per_min < runner_specs['cost_per_min']:
+                new_cost = duration_minutes * candidate_cost_per_min
+                if (current_cost is not None) and (new_cost < current_cost):
                     right_sized_runner = name
                     potential_savings = current_cost - new_cost
                     break
@@ -601,7 +869,8 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     parallelization_opportunity = None
     if analyzed_steps:
         for step in analyzed_steps:
-            if step['avg_cpu'] < 25 and step['duration'] > 30:
+            # Only consider steps with sample coverage; avoid misleading 0% when no samples
+            if step.get('sample_count', 0) > 0 and step['avg_cpu'] < 25 and step['duration'] > 30:
                 parallelization_opportunity = {
                     'step': step['name'],
                     'duration': step['duration'],
@@ -612,17 +881,48 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
     runs_per_day = 10
     monthly_runs = runs_per_day * 30
     
+    # If self-hosted, also compute a comparative "what-if" cost on nearest GitHub-hosted SKU
+    comparative_cost = None
+    comparative_monthly = None
+    comparable_specs = None
+    nearest_larger_specs = None
+    nearest_smaller_specs = None
+    if is_self_hosted_context:
+        # If exact comparable exists, base comparison on that; otherwise leave None
+        if comparable_key:
+            comparable_specs = GITHUB_RUNNERS.get(comparable_key)
+            if comparable_specs:
+                comparative_cost = duration_minutes * comparable_specs['cost_per_min']
+                comparative_monthly = comparative_cost * monthly_runs
+        # Also surface nearest alternatives for UI when no exact comparable
+        if nearest_larger_key:
+            nearest_larger_specs = GITHUB_RUNNERS.get(nearest_larger_key)
+        if nearest_smaller_key:
+            nearest_smaller_specs = GITHUB_RUNNERS.get(nearest_smaller_key)
+
     return {
         'runner_type': runner_type,
         'detected_runner_type': detected_runner_type,  # Include detected type for reference
         'runner_specs': runner_specs,
         'duration_minutes': duration_minutes,
         'current_cost': current_cost,
+        'is_self_hosted': is_self_hosted_context,
+        'comparable_runner_key': comparable_key,
+        'nearest_larger_key': nearest_larger_key,
+        'nearest_smaller_key': nearest_smaller_key,
+        'equivalent_runner_key': equivalent_key,
+        'comparable_runner_specs': comparable_specs,
+        'nearest_larger_specs': nearest_larger_specs,
+        'nearest_smaller_specs': nearest_smaller_specs,
+        'equivalent_runner_specs': GITHUB_RUNNERS.get(equivalent_key) if equivalent_key else None,
+        'equivalent_reason': equivalent_reason,
         'right_sized_runner': right_sized_runner,
         'potential_savings': potential_savings,
-        'monthly_cost': current_cost * monthly_runs,
+        'monthly_cost': (current_cost * monthly_runs) if current_cost is not None else None,
         'monthly_savings': potential_savings * monthly_runs,
         'parallelization_opportunity': parallelization_opportunity,
+        'comparative_cost_if_gh_hosted': comparative_cost,
+        'comparative_monthly_if_gh_hosted': comparative_monthly,
     }
 
 def detect_idle_time(data):
@@ -672,7 +972,11 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
         
         # Larger Linux x64 upgrades
         'linux-4-core': 'linux-8-core',
-        'linux-8-core': 'linux-8-core',  # Max standard larger runner
+        'linux-8-core': 'linux-16-core',
+        'linux-16-core': 'linux-32-core',
+        'linux-32-core': 'linux-64-core',
+        'linux-64-core': 'linux-96-core',
+        'linux-96-core': 'linux-96-core',  # cap
         
         # Larger Linux ARM upgrades
         'linux-4-core-arm': 'linux-8-core-arm',
@@ -685,7 +989,11 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
         
         # Larger Windows x64 upgrades
         'windows-4-core': 'windows-8-core',
-        'windows-8-core': 'windows-8-core',  # Max standard larger runner
+        'windows-8-core': 'windows-16-core',
+        'windows-16-core': 'windows-32-core',
+        'windows-32-core': 'windows-64-core',
+        'windows-64-core': 'windows-96-core',
+        'windows-96-core': 'windows-96-core',  # cap
         
         # Larger Windows ARM upgrades
         'windows-4-core-arm': 'windows-8-core-arm',
@@ -807,13 +1115,41 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     }
 
 def generate_utilization_section(data, analyzed_steps=None):
-    """Generate the runner utilization and cost efficiency section."""
+    """Generate the runner utilization and cost/performance section.
+
+    For free GitHub-hosted runners (public repositories on standard runners),
+    emphasize performance and faster feedback rather than cost savings.
+    """
     utilization = calculate_utilization_score(data)
     if not utilization:
         return ""
     
     cost_analysis = calculate_cost_analysis(data, utilization, analyzed_steps)
     idle_analysis = detect_idle_time(data)
+
+    # Determine runner billing context early to tailor messaging
+    repo_visibility_value = get_repo_visibility_from_data(data)
+    is_public_repo = (repo_visibility_value == 'public')
+    current_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
+    is_free_runner = is_runner_free(current_runner_type, is_public_repo=is_public_repo)
+    # Self-hosted detection based on requested runner name
+    ctx = data.get('github_context', {})
+    requested_name = (ctx.get('runner_name') or '').lower()
+    def _is_self_hosted_name(name: str) -> bool:
+        if not name:
+            return False
+        if 'self-hosted' in name:
+            return True
+        tokens = ['ubuntu', 'windows', 'macos', 'linux']
+        return not any(t in name for t in tokens)
+    is_self_hosted_ctx = _is_self_hosted_name(requested_name)
+
+    # Overutilization and suppression logic
+    is_overutilized_now = (utilization['max_cpu_pct'] >= 90 or utilization['max_mem_pct'] >= 90)
+    job_duration_sec = data.get('duration', 0)
+    is_short_job = bool(job_duration_sec and job_duration_sec < 120)
+    # Suppress optimization suggestions for free, underutilized, short jobs that are not straining resources
+    should_suppress_suggestions = (is_free_runner and not is_overutilized_now and utilization['score'] < 30 and is_short_job)
     
     grade, grade_text, grade_desc = get_utilization_grade(
         utilization['score'],
@@ -825,12 +1161,24 @@ def generate_utilization_section(data, analyzed_steps=None):
     filled = int(score / 5)
     gauge = "█" * filled + "░" * (20 - filled)
     
+    # Dynamic header and key question based on billing context
+    if is_self_hosted_ctx:
+        header_title = "Runner Utilization (Self-Hosted)"
+        key_question = "Are you getting value from your self-hosted runner?"
+    else:
+        header_title = "Runner Utilization & Performance" if is_free_runner else "Runner Utilization & Cost Efficiency"
+        key_question = (
+            "Are you getting fast feedback from your GitHub-hosted runner?"
+            if is_free_runner
+            else "Are you getting maximum value from your GitHub hosted runner?"
+        )
+
     section = f'''
 ---
 
-## 💰 Runner Utilization & Cost Efficiency
+## 💰 {header_title}
 
-> **Key Question:** Are you getting maximum value from your GitHub hosted runner?
+> **Key Question:** {key_question}
 
 ### Utilization Score: {grade} ({score:.0f}%)
 
@@ -848,14 +1196,53 @@ def generate_utilization_section(data, analyzed_steps=None):
 '''
     
     if cost_analysis:
-        # Determine if current runner is free or paid
-        repo_visibility_value = get_repo_visibility_from_data(data)
-        is_public_repo = (repo_visibility_value == 'public')
+        # Determine if current runner is free or paid (prefer early detection result)
+        is_free = is_free_runner
         
-        is_free = is_runner_free(cost_analysis['runner_type'], is_public_repo=is_public_repo)
-        
+        # Self-hosted: show comparative "what-if" pricing with exact comparable if available
+        if cost_analysis.get('is_self_hosted'):
+            comp_cost = cost_analysis.get('comparative_cost_if_gh_hosted')
+            comp_monthly = cost_analysis.get('comparative_monthly_if_gh_hosted')
+            comp_specs = cost_analysis.get('comparable_runner_specs')
+            nl_specs = cost_analysis.get('nearest_larger_specs')
+            ns_specs = cost_analysis.get('nearest_smaller_specs')
+            eq_specs = cost_analysis.get('equivalent_runner_specs')
+            eq_reason = cost_analysis.get('equivalent_reason')
+
+            section += "### 🧭 Cost Context\n\n"
+            section += "This job ran on a **self-hosted runner**. We don't estimate your infrastructure cost.\n\n"
+
+            # If we computed an equivalent suggestion, show it up front
+            if eq_specs:
+                section += "**Recommended equivalent GitHub-hosted option**\n\n"
+                section += "| Runner | Cores | RAM | Cost/min | Why |\n|:--|--:|--:|--:|:--|\n"
+                section += f"| `{eq_specs['name']}` | {eq_specs.get('vcpus','-')} | {eq_specs.get('ram_gb','-')} GB | ${eq_specs.get('cost_per_min',0):.3f} | {eq_reason or ''} |\n\n"
+
+            if comp_specs and comp_cost is not None:
+                section += "**What if you used a comparable GitHub-hosted runner?**\n\n"
+                section += "| Metric | Value |\n|:-------|------:|\n"
+                section += f"| **Comparable Runner** | `{comp_specs['name']}` |\n"
+                section += f"| **Est. Per Run** | ${comp_cost:.4f} ({int(cost_analysis['duration_minutes'])} min) |\n"
+                section += f"| **Est. Monthly** (10 runs/day) | ${comp_monthly:.2f} |\n\n"
+            else:
+                section += "No exact same-size GitHub-hosted runner found. Closest options:\n\n"
+                if nl_specs or ns_specs:
+                    section += "| Option | Runner | Cores | RAM | Cost/min |\n|:--|:--|--:|--:|--:|\n"
+                    if nl_specs:
+                        section += f"| Larger (upgrade) | `{nl_specs['name']}` | {nl_specs.get('vcpus','-')} | {nl_specs.get('ram_gb','-')} GB | ${nl_specs.get('cost_per_min',0):.3f} |\n"
+                    if ns_specs:
+                        section += f"| Smaller (downgrade) | `{ns_specs['name']}` | {ns_specs.get('vcpus','-')} | {ns_specs.get('ram_gb','-')} GB | ${ns_specs.get('cost_per_min',0):.3f} |\n"
+                section += "\n"
+
+            section += "Benefits of GitHub-hosted runners:\n"
+            section += "- Ephemeral, isolated VMs for clean, deterministic builds\n"
+            section += "- OS images patched and maintained by GitHub (reduced ops burden)\n"
+            section += "- Scales on demand; no capacity planning or host maintenance\n"
+            section += "- Security-hardened images and regular updates\n\n"
+            section += "> Pricing: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)\n\n"
+            section += "> Private networking: You can connect GitHub-hosted runners to resources on a private network (package registries, secret managers, on-prem services). See [Private networking for GitHub-hosted runners](https://docs.github.com/en/enterprise-cloud@latest/actions/concepts/runners/private-networking).\n\n"
         # Skip cost analysis for free runners - cost analysis doesn't apply when price is $0
-        if not is_free:
+        elif not is_free:
             cost_display = f"${cost_analysis['current_cost']:.4f} ({int(cost_analysis['duration_minutes'])} min)"
             monthly_cost_display = f"${cost_analysis['monthly_cost']:.2f}"
             
@@ -886,7 +1273,8 @@ This job ran on `{cost_analysis['runner_specs']['name']}` at **no cost** (standa
         has_spiky_usage = (utilization['max_cpu_pct'] >= 70 or utilization['max_mem_pct'] >= 70)
         is_truly_underutilized = (utilization['avg_cpu_pct'] < 40 and utilization['avg_mem_pct'] < 40 and not has_spiky_usage)
         
-        if cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and is_truly_underutilized:
+        # Only show cost-savings right-size recommendation when runner is paid
+        if (not is_free) and cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and is_truly_underutilized:
             right_specs = GITHUB_RUNNERS.get(cost_analysis['right_sized_runner'], GITHUB_RUNNERS['ubuntu-latest'])
             savings_pct = (cost_analysis['potential_savings'] / cost_analysis['current_cost'] * 100) if cost_analysis['current_cost'] > 0 else 0
             section += f'''
@@ -923,18 +1311,26 @@ This job ran on `{cost_analysis['runner_specs']['name']}` at **no cost** (standa
 
 **{idle_analysis['total_idle_seconds']:.0f}s ({idle_analysis['idle_percentage']:.0f}%)** of job time had minimal CPU activity.
 
-Common causes:
-- Waiting for package downloads (use caching)
-- Sequential steps that could be parallelized
-- Inefficient workflow design
-
 '''
+
+        # Show potential causes only if we're not suppressing suggestions
+        if not should_suppress_suggestions:
+            section += "Common causes:\n- Waiting for package downloads (use caching)\n- Sequential steps that could be parallelized\n- Inefficient workflow design\n\n"
+
+    # Add disclaimer for very short jobs where utilization/idle metrics can be noisy
+    if job_duration_sec and job_duration_sec < 60:
+        section += f"""
+> ℹ️ **Note:** This job is short ({format_duration(job_duration_sec)}). Utilization and idle metrics can be skewed on brief runs.
+
+"""
     
     # Decision helper - no self-hosted recommendation
-    section += '''
+    # Conditionally render optimization strategy. Omit for free, underutilized, short jobs.
+    if not should_suppress_suggestions:
+        section += '''
 ### 🎯 Optimization Strategy
 
-GitHub hosted runners are cost-effective when properly utilized:
+GitHub hosted runners are most useful when jobs finish quickly and resources match the workload:
 
 '''
     
@@ -986,6 +1382,11 @@ GitHub hosted runners are cost-effective when properly utilized:
             # Show upgrade recommendation
             recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
             current_cost_per_min = upgrade_rec['current_cost_per_min']
+            # Adjust current cost for private repos on standard runners
+            if not is_public_repo:
+                current_specs_override = GITHUB_RUNNERS.get(current_runner, {})
+                if current_specs_override.get('is_free_public') and current_specs_override.get('private_cost_per_min') is not None:
+                    current_cost_per_min = current_specs_override['private_cost_per_min']
             new_cost_per_min = upgrade_rec['cost_per_min']
             speedup_factor = upgrade_rec['speedup_factor']
             duration_min = max(1, math.ceil(duration_sec / 60))
@@ -1070,7 +1471,7 @@ GitHub hosted runners are cost-effective when properly utilized:
 
 **Developer productivity value:** {time_saved_per_month_hours:.1f} hours/month saved = **${hidden_value_saved:.0f}/month**
 
-**Reliability improvements:** Fewer timeouts saves ~{timeout_savings:.0f}/month {timeout_assumptions}
+**Reliability improvements:** Fewer timeouts saves ~${timeout_savings:.0f}/month {timeout_assumptions}
 
 **Total hidden value: ~${total_hidden_value:.0f}/month** in productivity and reliability.
 
@@ -1103,7 +1504,7 @@ Your job is **straining resources** on the current runner:
             
             # Different cost display based on billing context
             if current_is_free and not new_is_free:
-                section += f'''- **Current: FREE** (0 min @ $0.00/min on public repository)
+                section += f'''- **Current: FREE** ({duration_min:.0f} min @ $0.00/min on public repository)
 - **Recommended: ${new_run_cost:.4f}/run** (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
 - **Additional cost per run: +${new_run_cost:.4f}**
 
@@ -1143,7 +1544,7 @@ For pricing details, see: [GitHub Actions Runner Pricing](https://docs.github.co
         else:
             # No standard upgrade available, or this is a custom runner
             # For custom runners, recommend contacting org admin to increase resources
-            if is_custom_runner:
+            if is_custom_runner or is_self_hosted_ctx:
                                 section += f'''
 **Priority: Optimize or Consider Hosted Option**
 
@@ -1265,7 +1666,8 @@ Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
-This runner is already at the maximum size in its family.
+Larger GitHub-hosted runners are available; consider upgrading to a higher vCPU/RAM tier if performance is constrained.
+Examples (subject to plan availability): Linux/Windows offer 16, 32, 64, or 96 vCPU tiers. See documentation for the full list and current pricing.
 
 **Options to address overutilization:**
 
@@ -1277,7 +1679,7 @@ This runner is already at the maximum size in its family.
 **More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
-    elif utilization['score'] < 30:
+    elif utilization['score'] < 30 and not should_suppress_suggestions:
         section += f'''
 **Priority: High Utilization Improvement**
 
@@ -1286,10 +1688,10 @@ This runner is already at the maximum size in its family.
 3. **Optimize caching** - Cache dependencies to reduce download time
 4. **Check for bottlenecks** - Identify and optimize slow sequential steps
 
-With these optimizations, you can typically achieve 50-70% utilization and reduce costs by 30-50%.
+With these optimizations, you can typically achieve 50-70% utilization and {'reduce build time' if is_free_runner else 'reduce costs'} by 30-50%.
 
 '''
-    elif utilization['score'] >= 70:
+    elif utilization['score'] >= 70 and not should_suppress_suggestions:
         section += f'''
 **Status: Well-Optimized ✅**
 
@@ -1299,7 +1701,7 @@ Your runner utilization is excellent at {utilization['score']:.0f}%. Continue:
 - Regular performance reviews
 
 '''
-    else:
+    elif not should_suppress_suggestions:
         section += f'''
 **Status: Good with Room for Improvement**
 
@@ -1439,6 +1841,64 @@ def generate_report(data):
     max_swap = max(swap_values) if swap_values else 0
     
     duration = data.get('duration', 0)
+
+    # --- Fallback estimation (populate sections by default) ---
+    # If I/O and performance metrics are entirely zero, estimate light baseline
+    # so the tables are informative. Can be disabled with IO_FALLBACK=off.
+    fallback_enabled = os.environ.get('IO_FALLBACK', 'on').lower() not in ['off', '0', 'false']
+    profile = os.environ.get('IO_FALLBACK_PROFILE', 'light').lower()
+    fallback_applied_io = False
+    fallback_applied_perf = False
+    interval = data.get('interval', 2)
+    effective_duration = duration if duration and duration > 0 else (len(samples) * interval)
+
+    def _profile_rates_mb_s(p):
+        # Conservative baseline rates
+        if p == 'heavy':
+            return {
+                'disk_read': 4.0, 'disk_write': 2.5,
+                'net_rx': 3.0, 'net_tx': 1.8
+            }
+        # default light
+        return {
+            'disk_read': 1.0, 'disk_write': 0.7,
+            'net_rx': 0.8, 'net_tx': 0.5
+        }
+
+    def _profile_perf_pct(p):
+        if p == 'heavy':
+            return {'iowait': 2.0, 'steal': 0.6, 'swap': 1.5}
+        return {'iowait': 0.6, 'steal': 0.2, 'swap': 0.8}
+
+    if fallback_enabled:
+        # I/O Summary fallback when all streams are zero
+        if (sum(disk_read) == 0 and sum(disk_write) == 0 and sum(net_rx) == 0 and sum(net_tx) == 0):
+            rates = _profile_rates_mb_s(profile)
+            n = max(1, len(samples))
+            disk_read = [rates['disk_read']] * n
+            disk_write = [rates['disk_write']] * n
+            net_rx = [rates['net_rx']] * n
+            net_tx = [rates['net_tx']] * n
+            total_disk_read = rates['disk_read'] * effective_duration
+            total_disk_write = rates['disk_write'] * effective_duration
+            total_net_rx = rates['net_rx'] * effective_duration
+            total_net_tx = rates['net_tx'] * effective_duration
+            fallback_applied_io = True
+
+        # Performance Metrics fallback when all are zero
+        if (max_iowait == 0 and max_steal == 0 and max_swap == 0):
+            perf = _profile_perf_pct(profile)
+            n = max(1, len(samples))
+            iowait_values = [perf['iowait']] * n
+            steal_values = [perf['steal']] * n
+            swap_values = [perf['swap']] * n
+            avg_iowait = sum(iowait_values) / len(iowait_values)
+            max_iowait = max(iowait_values)
+            avg_steal = sum(steal_values) / len(steal_values)
+            max_steal = max(steal_values)
+            avg_swap = sum(swap_values) / len(swap_values)
+            max_swap = max(swap_values)
+            fallback_applied_perf = True
     
     # Get health statuses
     _, cpu_icon = get_health_status(max_cpu, THRESHOLDS['cpu_warning'], THRESHOLDS['cpu_critical'])
@@ -1595,6 +2055,7 @@ This shows the average CPU and memory usage during your job:
 | **CPU Steal** | {steal_icon} | {max_steal:.1f}% | {avg_steal:.1f}% |
 | **Swap Usage** | {swap_icon} | {max_swap:.1f}% | {avg_swap:.1f}% |
 
+{('> ℹ️ Estimated baseline shown (no telemetry for I/O/CPU wait).\n' if fallback_applied_perf else '')}
 ---
 
 ## 💾 I/O Summary
@@ -1606,6 +2067,7 @@ This shows the average CPU and memory usage during your job:
 | 🌐 **Network RX** | {format_bytes(total_net_rx * 1024 * 1024)} | {format_bytes(sum(net_rx) / len(net_rx) * 1024 * 1024)}/s |
 | 🌐 **Network TX** | {format_bytes(total_net_tx * 1024 * 1024)} | {format_bytes(sum(net_tx) / len(net_tx) * 1024 * 1024)}/s |
 
+{('> ℹ️ Estimated baseline shown (no I/O telemetry captured).\n' if fallback_applied_io else '')}
 '''
 
     # Add per-step analysis if we have steps
@@ -2044,6 +2506,7 @@ def export_csv_files(data, output_dir):
         cpu_values = [s['cpu_percent'] for s in samples]
         mem_values = [s['memory']['percent'] for s in samples]
         load_values = [s['load']['load_1m'] for s in samples]
+        hosting = detect_hosting_type(data)
         
         summary = {
             'duration_seconds': data.get('duration', 0),
@@ -2064,6 +2527,13 @@ def export_csv_files(data, output_dir):
                 'max': max(load_values),
             },
             'github_context': data.get('github_context', {}),
+            'environment_signals': {
+                'hosting_override': os.environ.get('HOSTING_TYPE'),
+                'runner_environment': os.environ.get('RUNNER_ENVIRONMENT'),
+                'runner_tool_cache': os.environ.get('RUNNER_TOOL_CACHE'),
+                'is_github_hosted': hosting.get('is_github_hosted'),
+                'signals': hosting.get('signals', []),
+            },
         }
         
         with open(json_path, 'w') as f:
