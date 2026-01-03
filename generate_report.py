@@ -174,6 +174,24 @@ GITHUB_RUNNERS = {
         'is_larger': True,
         'cost_per_min': 0.022,
     },
+    'linux-16-core': {
+        'sku': 'linux', 'name': 'Linux 16-core Larger Runner',
+        'vcpus': 16, 'ram_gb': 64,
+        'is_larger': True,
+        'cost_per_min': 0.044,
+    },
+    'linux-32-core': {
+        'sku': 'linux', 'name': 'Linux 32-core Larger Runner',
+        'vcpus': 32, 'ram_gb': 128,
+        'is_larger': True,
+        'cost_per_min': 0.088,
+    },
+    'linux-64-core': {
+        'sku': 'linux', 'name': 'Linux 64-core Larger Runner',
+        'vcpus': 64, 'ram_gb': 208,
+        'is_larger': True,
+        'cost_per_min': 0.176,
+    },
     # Larger Linux ARM (cheaper than x64)
     'linux-4-core-arm': {
         'sku': 'linux', 'name': 'Linux 4-core ARM Larger Runner',
@@ -200,6 +218,24 @@ GITHUB_RUNNERS = {
         'vcpus': 8, 'ram_gb': 32,
         'is_larger': True,
         'cost_per_min': 0.042,
+    },
+    'windows-16-core': {
+        'sku': 'windows', 'name': 'Windows 16-core Larger Runner',
+        'vcpus': 16, 'ram_gb': 64,
+        'is_larger': True,
+        'cost_per_min': 0.084,
+    },
+    'windows-32-core': {
+        'sku': 'windows', 'name': 'Windows 32-core Larger Runner',
+        'vcpus': 32, 'ram_gb': 128,
+        'is_larger': True,
+        'cost_per_min': 0.168,
+    },
+    'windows-64-core': {
+        'sku': 'windows', 'name': 'Windows 64-core Larger Runner',
+        'vcpus': 64, 'ram_gb': 208,
+        'is_larger': True,
+        'cost_per_min': 0.336,
     },
     # Larger Windows ARM (cheaper than x64)
     'windows-4-core-arm': {

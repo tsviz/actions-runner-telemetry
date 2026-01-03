@@ -134,6 +134,27 @@ class TestReportGeneration(unittest.TestCase):
         self.assertEqual(rec['recommended'], 'linux-4-core')
         self.assertEqual(rec['cores'], 4)
         self.assertTrue(rec['is_upgrade_possible'])
+    
+    def test_8core_upgrade_recommends_16core(self):
+        """Test that maxed-out 8-core runner recommends 16-core, not 8-core again.
+        
+        When an 8-core runner is maxed out, it should recommend the next tier (16-core),
+        not recommend the same runner again.
+        """
+        rec = gr.recommend_runner_upgrade(
+            max_cpu_pct=96,
+            max_mem_pct=50,
+            duration_seconds=180,
+            current_runner_type='linux-8-core',
+            is_public_repo=False
+        )
+        
+        # Should recommend 16-core, NOT 8-core again
+        self.assertEqual(rec['recommended'], 'linux-16-core')
+        self.assertEqual(rec['cores'], 16)
+        self.assertTrue(rec['is_upgrade_possible'])
+        # Verify cost is higher (16-core costs more than 8-core)
+        self.assertGreater(rec['cost_per_min'], 0.022)  # 8-core is $0.022/min
 
 
 if __name__ == '__main__':
