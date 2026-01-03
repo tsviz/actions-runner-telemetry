@@ -96,6 +96,45 @@ class TestReportGeneration(unittest.TestCase):
         finally:
             os.environ.pop('HOSTING_TYPE', None)
 
+    def test_public_repo_upgrade_recommends_8core(self):
+        """Test that public repo with maxed-out 4-core runner recommends 8-core, not 4-core.
+        
+        On public repos, ubuntu-latest already has 4-core/16GB.
+        So when it's maxed out, the recommendation should be 8-core, not 4-core.
+        """
+        # Test the upgrade recommendation function directly
+        rec = gr.recommend_runner_upgrade(
+            max_cpu_pct=95,  # High utilization
+            max_mem_pct=90,
+            duration_seconds=120,
+            current_runner_type='ubuntu-latest',
+            is_public_repo=True  # Public repo = already has 4-core
+        )
+        
+        # Should recommend 8-core, not 4-core (since public already has 4-core)
+        self.assertEqual(rec['recommended'], 'linux-8-core')
+        self.assertEqual(rec['cores'], 8)
+        self.assertTrue(rec['is_upgrade_possible'])
+    
+    def test_private_repo_upgrade_recommends_4core(self):
+        """Test that private repo with maxed-out 2-core runner recommends 4-core.
+        
+        On private repos, ubuntu-latest has 2-core/7GB.
+        So when it's maxed out, the recommendation should be 4-core.
+        """
+        rec = gr.recommend_runner_upgrade(
+            max_cpu_pct=95,
+            max_mem_pct=90,
+            duration_seconds=120,
+            current_runner_type='ubuntu-latest',
+            is_public_repo=False  # Private repo = 2-core
+        )
+        
+        # Should recommend 4-core for private repos
+        self.assertEqual(rec['recommended'], 'linux-4-core')
+        self.assertEqual(rec['cores'], 4)
+        self.assertTrue(rec['is_upgrade_possible'])
+
 
 if __name__ == '__main__':
     unittest.main()

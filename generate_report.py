@@ -1104,8 +1104,15 @@ def detect_idle_time(data):
         'idle_percentage': (total_idle / total_duration * 100) if total_duration > 0 else 0,
     }
 
-def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current_runner_type='ubuntu-latest'):
+def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current_runner_type='ubuntu-latest', is_public_repo=False):
     """Recommend a larger runner based on utilization, staying in same OS/arch family.
+    
+    Args:
+        max_cpu_pct: Peak CPU usage percentage
+        max_mem_pct: Peak memory usage percentage  
+        duration_seconds: Job duration
+        current_runner_type: Current runner label (e.g., 'ubuntu-latest')
+        is_public_repo: Whether this is a public repo (affects specs - public gets 4-core/16GB)
     
     Returns dict with:
     - recommended_runner: key in GITHUB_RUNNERS
@@ -1121,57 +1128,120 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     # Note: GitHub's runner availability varies by plan:
     # - Free tier (standard): Ubuntu max 2 cores, Windows max 2 cores
     # - GitHub Team/Enterprise Cloud: Larger runners available (4-core, 8-core, etc.)
-    upgrade_paths = {
-        # Linux upgrades
-        'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core (always available)
-        'ubuntu-latest': 'linux-4-core',  # 2-core to 4-core (requires GitHub Team+)
-        'ubuntu-24.04': 'linux-4-core',   # 2-core to 4-core (requires GitHub Team+)
-        'ubuntu-22.04': 'linux-4-core',   # 2-core to 4-core (requires GitHub Team+)
-        
-        # Larger Linux x64 upgrades
-        'linux-4-core': 'linux-8-core',
-        'linux-8-core': 'linux-16-core',
-        'linux-16-core': 'linux-32-core',
-        'linux-32-core': 'linux-64-core',
-        'linux-64-core': 'linux-96-core',
-        'linux-96-core': 'linux-96-core',  # cap
-        
-        # Larger Linux ARM upgrades
-        'linux-4-core-arm': 'linux-8-core-arm',
-        'linux-8-core-arm': 'linux-8-core-arm',
-        
-        # Windows upgrades
-        'windows-latest': 'windows-4-core',  # 2-core to 4-core (requires GitHub Team+)
-        'windows-2025': 'windows-4-core',    # 2-core to 4-core (requires GitHub Team+)
-        'windows-2022': 'windows-4-core',    # 2-core to 4-core (requires GitHub Team+)
-        
-        # Larger Windows x64 upgrades
-        'windows-4-core': 'windows-8-core',
-        'windows-8-core': 'windows-16-core',
-        'windows-16-core': 'windows-32-core',
-        'windows-32-core': 'windows-64-core',
-        'windows-64-core': 'windows-96-core',
-        'windows-96-core': 'windows-96-core',  # cap
-        
-        # Larger Windows ARM upgrades
-        'windows-4-core-arm': 'windows-8-core-arm',
-        'windows-8-core-arm': 'windows-8-core-arm',
-        
-        # macOS Intel upgrades
-        'macos-13': 'macos-13-large',
-        'macos-15-intel': 'macos-15-large',
-        
-        # macOS Apple Silicon upgrades
-        'macos-latest': 'macos-latest-xlarge',
-        'macos-14': 'macos-14-xlarge',
-        'macos-15': 'macos-15-xlarge',
-        
-        # macOS Large → XLarge
-        'macos-13-large': 'macos-13-xlarge',
-        'macos-14-large': 'macos-14-xlarge',
-        'macos-15-large': 'macos-15-xlarge',
-        'macos-latest-large': 'macos-latest-xlarge',
-    }
+    #
+    # IMPORTANT: On PUBLIC repos, standard runners get UPGRADED specs:
+    # - ubuntu-latest: 4 cores, 16GB (same as linux-4-core on private!)
+    # - So upgrade path should go to 8-core, not 4-core
+    
+    # Build upgrade paths based on repo visibility
+    if is_public_repo:
+        # Public repos: standard runners already have 4-core/16GB
+        # So upgrade path goes directly to 8-core
+        upgrade_paths = {
+            # Linux upgrades (public = 4-core already, go to 8-core)
+            'ubuntu-slim': 'ubuntu-latest',  # 1-core to 4-core (free)
+            'ubuntu-latest': 'linux-8-core',  # 4-core to 8-core (paid)
+            'ubuntu-24.04': 'linux-8-core',
+            'ubuntu-22.04': 'linux-8-core',
+            
+            # Windows upgrades (public = 4-core already, go to 8-core)
+            'windows-latest': 'windows-8-core',
+            'windows-2025': 'windows-8-core',
+            'windows-2022': 'windows-8-core',
+            
+            # Larger Linux x64 upgrades
+            'linux-4-core': 'linux-8-core',
+            'linux-8-core': 'linux-16-core',
+            'linux-16-core': 'linux-32-core',
+            'linux-32-core': 'linux-64-core',
+            'linux-64-core': 'linux-96-core',
+            'linux-96-core': 'linux-96-core',  # cap
+            
+            # Larger Linux ARM upgrades
+            'linux-4-core-arm': 'linux-8-core-arm',
+            'linux-8-core-arm': 'linux-8-core-arm',
+            
+            # Larger Windows x64 upgrades
+            'windows-4-core': 'windows-8-core',
+            'windows-8-core': 'windows-16-core',
+            'windows-16-core': 'windows-32-core',
+            'windows-32-core': 'windows-64-core',
+            'windows-64-core': 'windows-96-core',
+            'windows-96-core': 'windows-96-core',  # cap
+            
+            # Larger Windows ARM upgrades
+            'windows-4-core-arm': 'windows-8-core-arm',
+            'windows-8-core-arm': 'windows-8-core-arm',
+            
+            # macOS Intel upgrades
+            'macos-13': 'macos-13-large',
+            'macos-15-intel': 'macos-15-large',
+            
+            # macOS Apple Silicon upgrades
+            'macos-latest': 'macos-latest-xlarge',
+            'macos-14': 'macos-14-xlarge',
+            'macos-15': 'macos-15-xlarge',
+            
+            # macOS Large → XLarge
+            'macos-13-large': 'macos-13-xlarge',
+            'macos-14-large': 'macos-14-xlarge',
+            'macos-15-large': 'macos-15-xlarge',
+            'macos-latest-large': 'macos-latest-xlarge',
+        }
+    else:
+        # Private repos: standard runners have 2-core/7GB
+        # Upgrade path goes to 4-core first
+        upgrade_paths = {
+            # Linux upgrades
+            'ubuntu-slim': 'ubuntu-latest',  # 1-core to 2-core
+            'ubuntu-latest': 'linux-4-core',  # 2-core to 4-core (requires GitHub Team+)
+            'ubuntu-24.04': 'linux-4-core',
+            'ubuntu-22.04': 'linux-4-core',
+            
+            # Larger Linux x64 upgrades
+            'linux-4-core': 'linux-8-core',
+            'linux-8-core': 'linux-16-core',
+            'linux-16-core': 'linux-32-core',
+            'linux-32-core': 'linux-64-core',
+            'linux-64-core': 'linux-96-core',
+            'linux-96-core': 'linux-96-core',  # cap
+            
+            # Larger Linux ARM upgrades
+            'linux-4-core-arm': 'linux-8-core-arm',
+            'linux-8-core-arm': 'linux-8-core-arm',
+            
+            # Windows upgrades
+            'windows-latest': 'windows-4-core',  # 2-core to 4-core (requires GitHub Team+)
+            'windows-2025': 'windows-4-core',
+            'windows-2022': 'windows-4-core',
+            
+            # Larger Windows x64 upgrades
+            'windows-4-core': 'windows-8-core',
+            'windows-8-core': 'windows-16-core',
+            'windows-16-core': 'windows-32-core',
+            'windows-32-core': 'windows-64-core',
+            'windows-64-core': 'windows-96-core',
+            'windows-96-core': 'windows-96-core',  # cap
+            
+            # Larger Windows ARM upgrades
+            'windows-4-core-arm': 'windows-8-core-arm',
+            'windows-8-core-arm': 'windows-8-core-arm',
+            
+            # macOS Intel upgrades
+            'macos-13': 'macos-13-large',
+            'macos-15-intel': 'macos-15-large',
+            
+            # macOS Apple Silicon upgrades
+            'macos-latest': 'macos-latest-xlarge',
+            'macos-14': 'macos-14-xlarge',
+            'macos-15': 'macos-15-xlarge',
+            
+            # macOS Large → XLarge
+            'macos-13-large': 'macos-13-xlarge',
+            'macos-14-large': 'macos-14-xlarge',
+            'macos-15-large': 'macos-15-xlarge',
+            'macos-latest-large': 'macos-latest-xlarge',
+        }
     
     recommended = upgrade_paths.get(current_runner_type, None)
     
@@ -1541,27 +1611,32 @@ GitHub hosted runners are most useful when jobs finish quickly and resources mat
             utilization['max_cpu_pct'],
             utilization['max_mem_pct'],
             duration_sec,
-            current_runner_type=current_runner
+            current_runner_type=current_runner,
+            is_public_repo=is_public_repo
         )
         
         # FORCE upgrade if still not possible and current is small runner
         if not upgrade_rec['is_upgrade_possible']:
             current_specs = GITHUB_RUNNERS.get(current_runner, {})
-            current_cores = current_specs.get('vcpus', 2)
-            # If current is 2-core and not marked as upgrade possible, force it
-            if current_cores <= 2:
+            # For public repos, standard runners have 4 cores; for private, 2 cores
+            effective_cores = current_specs.get('public_vcpus', current_specs.get('vcpus', 2)) if is_public_repo else current_specs.get('vcpus', 2)
+            
+            # Determine if we need to force an upgrade based on effective core count
+            # Public repos with 4-core standard runners → go to 8-core
+            # Private repos with 2-core standard runners → go to 4-core
+            if effective_cores <= 4:
                 if 'windows' in current_runner.lower():
-                    upgrade_rec['recommended'] = 'windows-4-core'
+                    upgrade_rec['recommended'] = 'windows-8-core' if is_public_repo else 'windows-4-core'
                 elif 'macos' in current_runner.lower():
                     upgrade_rec['recommended'] = 'macos-13-large'
                 else:
-                    upgrade_rec['recommended'] = 'linux-4-core'
+                    upgrade_rec['recommended'] = 'linux-8-core' if is_public_repo else 'linux-4-core'
                 # Recalculate specs for forced upgrade
                 new_specs = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
-                upgrade_rec['cores'] = new_specs.get('vcpus', 4)
-                upgrade_rec['ram_gb'] = new_specs.get('ram_gb', 16)
-                upgrade_rec['name'] = new_specs.get('name', 'linux-4-core')
-                upgrade_rec['cost_per_min'] = new_specs.get('cost_per_min', 0.012)
+                upgrade_rec['cores'] = new_specs.get('vcpus', 8 if is_public_repo else 4)
+                upgrade_rec['ram_gb'] = new_specs.get('ram_gb', 32 if is_public_repo else 16)
+                upgrade_rec['name'] = new_specs.get('name', upgrade_rec['recommended'])
+                upgrade_rec['cost_per_min'] = new_specs.get('cost_per_min', 0.032 if is_public_repo else 0.012)
                 upgrade_rec['is_upgrade_possible'] = True
         
         # Check if upgrade is actually possible
