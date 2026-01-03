@@ -348,6 +348,49 @@ class TestIntegration(unittest.TestCase):
         finally:
             os.environ.clear()
             os.environ.update(original_env)
+
+    def test_custom_named_larger_runner(self):
+        """Test GitHub-hosted larger runner with custom name like 'tsvi-linux8cores'.
+        
+        When a user creates a larger runner through GitHub's UI with a custom name,
+        it's still GitHub-hosted but has custom naming. The runner should be detected
+        based on hardware specs and correctly billed as a larger runner.
+        
+        This test simulates the scenario:
+        - runs-on: tsvi-linux8cores (custom larger runner name)
+        - Actual HW: 8 cores, 32GB RAM
+        - GitHub-hosted (via environment signals)
+        - Should detect as linux-8-core (PAID), not ubuntu-latest (FREE)
+        """
+        data = {
+            'github_context': {
+                'runner_os': 'Linux',
+                'runner_name': 'GitHub Actions 1000388083'  # Generic runtime name
+            },
+            'initial_snapshot': {
+                'cpu_count': 8,
+                'memory': {'total_mb': 32098}  # ~31.3 GB
+            }
+        }
+        
+        import os
+        original_env = os.environ.copy()
+        try:
+            # Simulate GitHub-hosted environment with custom runner label
+            os.environ['RUNNER_ENVIRONMENT'] = 'github-hosted'
+            os.environ['RUNNER_NAME'] = 'tsvi-linux8cores'  # Custom larger runner name
+            
+            # Even on public repo, custom-named larger runner should NOT be free
+            runner_type = detect_runner_type(data, is_public_repo=True)
+            self.assertEqual(runner_type, 'linux-8-core')
+            
+            # linux-8-core is always paid
+            is_free = is_runner_free(runner_type, is_public_repo=True,
+                                     requested_runner_name='tsvi-linux8cores')
+            self.assertFalse(is_free)
+        finally:
+            os.environ.clear()
+            os.environ.update(original_env)
     
     def test_standard_runner_end_to_end(self):
         """Test complete flow for standard runner."""

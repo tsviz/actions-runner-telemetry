@@ -679,14 +679,31 @@ def detect_runner_type(data, is_public_repo=None):
         # Billing is based on the REQUESTED label, not actual hardware specs.
         # If the runner name is generic (like "GitHub Actions NNNN") and doesn't indicate
         # a larger runner was explicitly requested, prefer standard label for billing accuracy.
+        # HOWEVER: If the REQUESTED runner label (from runs-on) is a custom name (not ubuntu-latest),
+        # they explicitly requested a larger runner - don't downgrade to standard.
         matched_specs = GITHUB_RUNNERS.get(best_match, {})
         if matched_specs.get('is_larger') and is_public_repo and hosting.get('is_github_hosted') is True:
+            # Get the originally requested runner label from RUNNER_NAME environment
+            requested_label = os.environ.get('RUNNER_NAME', '').lower()
+            
+            # Check if this is a standard runner that GitHub happened to provision with more resources
+            # vs a custom-named larger runner that was explicitly created
+            is_standard_label = requested_label in [
+                'github actions', 'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04',
+                'windows-latest', 'windows-2025', 'windows-2022', 'windows-2019',
+                'macos-latest', 'macos-14', 'macos-13', 'macos-12'
+            ] or requested_label.startswith('github actions')  # "GitHub Actions NNNN" patterns
+            
             # Check if runner name indicates an explicitly requested larger runner
             name_indicates_larger = any(hint in runner_name for hint in [
-                '4-core', '8-core', '16-core', '32-core', '64-core',
-                '-large', '-xlarge', 'larger', 'premium'
+                '4-core', '8-core', '16-core', '32-core', '64-core', '4core', '8core', '16core',
+                '-large', '-xlarge', 'larger', 'premium', 'linux-', 'windows-'
             ])
-            if not name_indicates_larger:
+            
+            # Only downgrade to standard if BOTH conditions are true:
+            # 1. The requested label is a standard GitHub label (not a custom name)
+            # 2. The runner name doesn't indicate it's a larger runner
+            if is_standard_label and not name_indicates_larger:
                 # Generic name on public repo with GitHub-hosted signals = probably a standard runner
                 # with upgraded hardware. Use standard label for correct billing (FREE).
                 if 'linux' in runner_os:
@@ -697,8 +714,12 @@ def detect_runner_type(data, is_public_repo=None):
                     standard_label = 'macos-latest'
                 else:
                     standard_label = best_match
-                logging.info(f"detect_runner_type: Public GitHub-hosted with generic name - using '{standard_label}' for billing (actual HW may be larger)")
+                logging.info(f"detect_runner_type: Public GitHub-hosted with standard label '{requested_label}' - using '{standard_label}' for billing (actual HW may be larger)")
                 return standard_label
+            else:
+                # Custom-named larger runner - trust the spec match
+                logging.info(f"detect_runner_type: Custom-named larger runner '{requested_label}' - using spec match '{best_match}'")
+                return best_match
         
         return best_match
     
