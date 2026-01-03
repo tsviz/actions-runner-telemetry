@@ -557,6 +557,10 @@ def detect_hosting_type(data):
     rname = (data.get('github_context', {}).get('runner_name') or '').lower()
     if 'self-hosted' in rname and not signals:
         return {'is_github_hosted': False, 'signals': ['label_self_hosted']}
+    
+    # "GitHub Actions NNNNN" is a strong indicator of GitHub-hosted runners
+    if rname.startswith('github actions') or rname.startswith('hosted agent'):
+        signals.append('github_actions_runner_name')
 
     if signals:
         return {'is_github_hosted': True, 'signals': signals}
