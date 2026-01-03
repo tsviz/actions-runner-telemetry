@@ -85,11 +85,21 @@ FREE_RUNNER_LABELS = {
 
 # Minimal catalog of runner specs used for detection and messaging
 # Pricing updated to January 2026 rates per GitHub Actions Runner Pricing
+# 
+# IMPORTANT: Standard runner specs differ by repository visibility:
+# - PUBLIC repos: ubuntu/windows-latest = 4 CPU, 16GB RAM (FREE, unlimited)
+# - PRIVATE repos: ubuntu/windows-latest = 2 CPU, 7GB RAM (PAID per minute)
+# 
+# The 'vcpus' and 'ram_gb' fields represent PRIVATE repo specs (used for billing).
+# 'public_vcpus' and 'public_ram_gb' represent PUBLIC repo specs (for detection).
+
 GITHUB_RUNNERS = {
-    # Standard hosted runners (2-core)
+    # Standard hosted runners - specs differ by repo visibility
+    # Public: 4 CPU, 16GB | Private: 2 CPU, 7GB
     'ubuntu-latest': {
         'sku': 'linux', 'name': 'Ubuntu Standard Runner',
-        'vcpus': 2, 'ram_gb': 7,
+        'vcpus': 2, 'ram_gb': 7,           # Private repo specs
+        'public_vcpus': 4, 'public_ram_gb': 16,  # Public repo specs
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.006,
@@ -98,6 +108,7 @@ GITHUB_RUNNERS = {
     'ubuntu-24.04': {
         'sku': 'linux', 'name': 'Ubuntu 24.04 Standard Runner',
         'vcpus': 2, 'ram_gb': 7,
+        'public_vcpus': 4, 'public_ram_gb': 16,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.006,
@@ -106,6 +117,7 @@ GITHUB_RUNNERS = {
     'ubuntu-22.04': {
         'sku': 'linux', 'name': 'Ubuntu 22.04 Standard Runner',
         'vcpus': 2, 'ram_gb': 7,
+        'public_vcpus': 4, 'public_ram_gb': 16,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.006,
@@ -114,6 +126,7 @@ GITHUB_RUNNERS = {
     'windows-latest': {
         'sku': 'windows', 'name': 'Windows Standard Runner',
         'vcpus': 2, 'ram_gb': 7,
+        'public_vcpus': 4, 'public_ram_gb': 16,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.010,
@@ -122,6 +135,7 @@ GITHUB_RUNNERS = {
     'windows-2025': {
         'sku': 'windows', 'name': 'Windows 2025 Standard Runner',
         'vcpus': 2, 'ram_gb': 7,
+        'public_vcpus': 4, 'public_ram_gb': 16,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.010,
@@ -130,14 +144,17 @@ GITHUB_RUNNERS = {
     'windows-2022': {
         'sku': 'windows', 'name': 'Windows 2022 Standard Runner',
         'vcpus': 2, 'ram_gb': 7,
+        'public_vcpus': 4, 'public_ram_gb': 16,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.010,
         'cost_per_min': 0.010,
     },
+    # macOS standard - same specs for public/private (3 CPU M1, 7GB)
     'macos-latest': {
-        'sku': 'macos', 'name': 'macOS Standard Runner',
+        'sku': 'macos', 'name': 'macOS Standard Runner (M1)',
         'vcpus': 3, 'ram_gb': 7,
+        'public_vcpus': 3, 'public_ram_gb': 7,
         'is_larger': False,
         'is_free_public': True,
         'private_cost_per_min': 0.062,
@@ -607,8 +624,15 @@ def detect_runner_type(data, is_public_repo=None):
         
         # Match by SKU prefix (e.g., 'linux', 'windows', 'macos')
         sku = specs.get('sku', '')
-        spec_cores = specs.get('vcpus', 2)
-        spec_memory = specs.get('ram_gb', 7)
+        
+        # Use public or private specs based on repo visibility
+        # Standard runners have different specs: Public (4 CPU, 16GB) vs Private (2 CPU, 7GB)
+        if is_public_repo and 'public_vcpus' in specs:
+            spec_cores = specs.get('public_vcpus', specs.get('vcpus', 2))
+            spec_memory = specs.get('public_ram_gb', specs.get('ram_gb', 7))
+        else:
+            spec_cores = specs.get('vcpus', 2)
+            spec_memory = specs.get('ram_gb', 7)
         
         # Check OS match - be flexible with SKU parsing
         sku_lower = sku.lower()
@@ -642,10 +666,36 @@ def detect_runner_type(data, is_public_repo=None):
             best_match_score = match_score
             best_match = runner_key
     
-    # If we found a good match (score < 15 allows for some variance), return it
+    # If we found a good match (score < 15 allows for some variance), use it
     if best_match and best_match_score < 15:
-        # Do not override larger runner classification for public repos; billing handled separately
         logging.info(f"detect_runner_type: Matched to '{best_match}' with score {best_match_score:.2f}")
+        
+        # IMPORTANT: For public repos with GitHub-hosted runners and generic runner names,
+        # GitHub often provisions beefier hardware (4-core) for standard runners like ubuntu-latest.
+        # Billing is based on the REQUESTED label, not actual hardware specs.
+        # If the runner name is generic (like "GitHub Actions NNNN") and doesn't indicate
+        # a larger runner was explicitly requested, prefer standard label for billing accuracy.
+        matched_specs = GITHUB_RUNNERS.get(best_match, {})
+        if matched_specs.get('is_larger') and is_public_repo and hosting.get('is_github_hosted') is True:
+            # Check if runner name indicates an explicitly requested larger runner
+            name_indicates_larger = any(hint in runner_name for hint in [
+                '4-core', '8-core', '16-core', '32-core', '64-core',
+                '-large', '-xlarge', 'larger', 'premium'
+            ])
+            if not name_indicates_larger:
+                # Generic name on public repo with GitHub-hosted signals = probably a standard runner
+                # with upgraded hardware. Use standard label for correct billing (FREE).
+                if 'linux' in runner_os:
+                    standard_label = 'ubuntu-latest'
+                elif 'windows' in runner_os:
+                    standard_label = 'windows-latest'
+                elif 'macos' in runner_os:
+                    standard_label = 'macos-latest'
+                else:
+                    standard_label = best_match
+                logging.info(f"detect_runner_type: Public GitHub-hosted with generic name - using '{standard_label}' for billing (actual HW may be larger)")
+                return standard_label
+        
         return best_match
     
     logging.warning(f"detect_runner_type: No good spec match found (best score: {best_match_score:.2f}), using fallback logic")
@@ -1244,17 +1294,11 @@ def generate_utilization_section(data, analyzed_steps=None):
     is_public_repo = (repo_visibility_value == 'public')
     current_runner_type = detect_runner_type(data, is_public_repo=is_public_repo)
     is_free_runner = is_runner_free(current_runner_type, is_public_repo=is_public_repo)
-    # Self-hosted detection based on requested runner name
-    ctx = data.get('github_context', {})
-    requested_name = (ctx.get('runner_name') or '').lower()
-    def _is_self_hosted_name(name: str) -> bool:
-        if not name:
-            return False
-        if 'self-hosted' in name:
-            return True
-        tokens = ['ubuntu', 'windows', 'macos', 'linux']
-        return not any(t in name for t in tokens)
-    is_self_hosted_ctx = _is_self_hosted_name(requested_name)
+    
+    # Self-hosted detection using hosting signals, not just runner name patterns.
+    # Use detect_hosting_type() which checks environment variables, workspace paths, etc.
+    hosting = detect_hosting_type(data)
+    is_self_hosted_ctx = (hosting.get('is_github_hosted') is False)
 
     # Overutilization and suppression logic
     is_overutilized_now = (utilization['max_cpu_pct'] >= 90 or utilization['max_mem_pct'] >= 90)

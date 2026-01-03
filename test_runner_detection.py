@@ -300,6 +300,54 @@ class TestIntegration(unittest.TestCase):
         is_free = is_runner_free(runner_type, is_public_repo=True,
                     requested_runner_name='ubuntu-large-abc123')
         self.assertFalse(is_free)
+
+    def test_github_hosted_4core_with_numeric_name(self):
+        """Test GitHub-hosted 4-core runner with generic numbered name like 'GitHub Actions 1000002091'.
+        
+        For PUBLIC repos, standard runners have upgraded specs:
+        - ubuntu-latest = 4 CPU, 16GB RAM (FREE)
+        - So 4-core/16GB should match ubuntu-latest, not linux-4-core
+        
+        For PRIVATE repos, standard runners have lower specs:
+        - ubuntu-latest = 2 CPU, 7GB RAM (PAID)
+        - So 4-core/16GB would match linux-4-core (larger runner)
+        """
+        data = {
+            'github_context': {
+                'runner_os': 'Linux',
+                'runner_name': 'GitHub Actions 1000002091'
+            },
+            'initial_snapshot': {
+                'cpu_count': 4,
+                'memory': {'total_mb': 16384}  # 16GB
+            }
+        }
+        
+        # Mock hosting detection to indicate GitHub-hosted
+        import os
+        original_env = os.environ.copy()
+        try:
+            os.environ['RUNNER_ENVIRONMENT'] = 'github-hosted'
+            
+            # PUBLIC repo: 4-core/16GB matches ubuntu-latest specs (FREE)
+            runner_type = detect_runner_type(data, is_public_repo=True)
+            self.assertEqual(runner_type, 'ubuntu-latest')
+            
+            # ubuntu-latest on public repo = FREE
+            is_free = is_runner_free(runner_type, is_public_repo=True)
+            self.assertTrue(is_free)
+            
+            # PRIVATE repo: 4-core/16GB does NOT match ubuntu-latest (2-core/7GB)
+            # Should match linux-4-core instead
+            runner_type_private = detect_runner_type(data, is_public_repo=False)
+            self.assertEqual(runner_type_private, 'linux-4-core')
+            
+            # linux-4-core is always paid
+            is_free = is_runner_free(runner_type_private, is_public_repo=False)
+            self.assertFalse(is_free)
+        finally:
+            os.environ.clear()
+            os.environ.update(original_env)
     
     def test_standard_runner_end_to_end(self):
         """Test complete flow for standard runner."""
