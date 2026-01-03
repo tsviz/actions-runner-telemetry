@@ -107,7 +107,7 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 4,
-                'memory_total_mb': 16384
+                'memory': {'total_mb': 16384}
             }
         }
         result = detect_runner_type(data)
@@ -122,7 +122,7 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 8,
-                'memory_total_mb': 32768
+                'memory': {'total_mb': 32768}
             }
         }
         result = detect_runner_type(data)
@@ -137,12 +137,12 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 4,
-                'memory_total_mb': 16384
+                'memory': {'total_mb': 16384}
             }
         }
         result = detect_runner_type(data)
-        # Should match to ubuntu-latest based on specs (4-core, 16GB matches ubuntu-latest public spec)
-        self.assertEqual(result, 'ubuntu-latest')
+        # Should match to linux-4-core based on specs (4-core, 16GB - standard runners are only 2-core)
+        self.assertEqual(result, 'linux-4-core')
     
     def test_self_hosted_runner_fallback(self):
         """Test fallback for self-hosted runner with non-standard specs."""
@@ -153,12 +153,29 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 16,
-                'memory_total_mb': 65536
+                'memory': {'total_mb': 65536}
             }
         }
         result = detect_runner_type(data)
         # Should fall back to linux-8-core (closest match by CPU count)
         self.assertEqual(result, 'linux-8-core')
+
+    def test_public_hosted_larger_custom_label_kept(self):
+        """Public repo with hosted larger runner and custom label should keep larger classification."""
+        data = {
+            'github_context': {
+                'runner_os': 'Linux',
+                'runner_name': 'tsvi-linux8cores',
+            },
+            'initial_snapshot': {
+                'cpu_count': 8,
+                'memory': {'total_mb': 32768}
+            }
+        }
+        result = detect_runner_type(data, is_public_repo=True)
+        self.assertEqual(result, 'linux-8-core')
+        # Larger runners are always paid on public repos
+        self.assertFalse(is_runner_free(result, is_public_repo=True))
     
     def test_windows_runner_detection(self):
         """Test detection of Windows runners."""
@@ -169,7 +186,7 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 4,
-                'memory_total_mb': 16384
+                'memory': {'total_mb': 16384}
             }
         }
         result = detect_runner_type(data)
@@ -184,7 +201,7 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 3,
-                'memory_total_mb': 7168
+                'memory': {'total_mb': 7168}
             }
         }
         result = detect_runner_type(data)
@@ -199,7 +216,7 @@ class TestDetectRunnerType(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 4,
-                'memory_total_mb': 16384
+                'memory': {'total_mb': 16384}
             }
         }
         result = detect_runner_type(data)
@@ -271,18 +288,18 @@ class TestIntegration(unittest.TestCase):
             },
             'initial_snapshot': {
                 'cpu_count': 4,
-                'memory_total_mb': 16384
+                'memory': {'total_mb': 16384}
             }
         }
         
-        # Detect runner type - should match to ubuntu-latest based on specs
+        # Detect runner type - should match to linux-4-core based on specs (4-core, 16GB)
         runner_type = detect_runner_type(data)
-        self.assertEqual(runner_type, 'ubuntu-latest')
+        self.assertEqual(runner_type, 'linux-4-core')
         
-        # Billing should rely on detected type; on public repo ubuntu-latest is free
+        # Larger runners are always paid, even on public repos
         is_free = is_runner_free(runner_type, is_public_repo=True,
                     requested_runner_name='ubuntu-large-abc123')
-        self.assertTrue(is_free)
+        self.assertFalse(is_free)
     
     def test_standard_runner_end_to_end(self):
         """Test complete flow for standard runner."""
@@ -292,8 +309,8 @@ class TestIntegration(unittest.TestCase):
                 'runner_name': 'ubuntu-latest'
             },
             'initial_snapshot': {
-                'cpu_count': 4,
-                'memory_total_mb': 16384
+                'cpu_count': 2,
+                'memory': {'total_mb': 7168}
             }
         }
         

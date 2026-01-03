@@ -24,6 +24,27 @@ logging.basicConfig(
 
 DATA_FILE = os.environ.get('TELEMETRY_DATA_FILE', '/tmp/telemetry_data.json')
 
+
+def format_cost(value: float) -> str:
+    """Format cost values, trimming unnecessary trailing zeros.
+    
+    Examples:
+        0.022 -> "$0.022"
+        0.0220 -> "$0.022"
+        0.10 -> "$0.10"
+        1.50 -> "$1.50"
+    """
+    if value == 0:
+        return "$0.00"
+    # Format with 4 decimal places, then strip trailing zeros (but keep at least 2 decimals)
+    formatted = f"{value:.4f}".rstrip('0')
+    # Ensure at least 2 decimal places for currency
+    parts = formatted.split('.')
+    if len(parts) == 2 and len(parts[1]) < 2:
+        formatted = f"{value:.2f}"
+    return f"${formatted}"
+
+
 # Health thresholds
 THRESHOLDS = {
     'cpu_warning': 60,
@@ -40,6 +61,13 @@ THRESHOLDS = {
     'steal_critical': 15,
 }
 
+# Utilization score thresholds
+UTILIZATION_THRESHOLDS = {
+    'excellent': 90,
+    'good': 70,
+    'fair': 50,
+}
+
 # GitHub Hosted Runner Specifications with accurate pricing (Jan 1, 2026+)
 # https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing
 # 
@@ -47,188 +75,250 @@ THRESHOLDS = {
 # - Free tier: Standard runners only (ubuntu-latest 2-core, windows-latest 2-core, macOS available)
 # - GitHub Team/Enterprise Cloud: Larger runners available (4-core, 8-core, etc.)
 # Larger runners are marked with 'is_larger': True flag.
-GITHUB_RUNNERS = {
-    # Standard Linux runners
-    # NOTE: Specs vary by repo visibility:
-    # - Public repos: 4 cores, 16GB RAM (free)
-    # - Private repos: 2 cores, 7GB RAM (paid, $0.006/min)
-    # The specs below are for PUBLIC repos (larger resources, zero cost).
-    # For private repos, adjust the cost_per_min based on repo visibility.
-    'ubuntu-slim': {'vcpus': 1, 'ram_gb': 5, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 1-core (ubuntu-slim)', 'sku': 'linux_slim', 'is_free_public': True},
-    'ubuntu-latest': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-latest)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
-    'ubuntu-24.04': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-24.04)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
-    'ubuntu-22.04': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Linux 4-core (ubuntu-22.04)', 'sku': 'linux', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.006},
-    
-    # Larger Linux x64 runners (GitHub Team/Enterprise Cloud)
-    'linux-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.012, 'storage_gb': 14, 'name': 'Linux 4-core Larger Runner', 'sku': 'linux_4_core', 'is_larger': True},
-    'linux-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Linux 8-core Larger Runner', 'sku': 'linux_8_core', 'is_larger': True},
-    'linux-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.042, 'storage_gb': 14, 'name': 'Linux 16-core Larger Runner', 'sku': 'linux_16_core', 'is_larger': True},
-    'linux-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.082, 'storage_gb': 14, 'name': 'Linux 32-core Larger Runner', 'sku': 'linux_32_core', 'is_larger': True},
-    'linux-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.162, 'storage_gb': 14, 'name': 'Linux 64-core Larger Runner', 'sku': 'linux_64_core', 'is_larger': True},
-    'linux-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.242, 'storage_gb': 14, 'name': 'Linux 96-core Larger Runner', 'sku': 'linux_96_core', 'is_larger': True},
-    
-    # Larger Linux ARM64 runners (GitHub Team/Enterprise Cloud)
-    'linux-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.008, 'storage_gb': 14, 'name': 'Linux ARM 4-core Larger Runner', 'sku': 'linux_4_core_arm', 'is_larger': True},
-    'linux-8-core-arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Linux ARM 8-core Larger Runner', 'sku': 'linux_8_core_arm', 'is_larger': True},
-    
-    # Standard Windows runners
-    # NOTE: Specs vary by repo visibility:
-    # - Public repos: 4 cores, 16GB RAM (free)
-    # - Private repos: 2 cores, 7GB RAM (paid, $0.010/min)
-    'windows-latest': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-latest)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
-    'windows-2025': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-2025)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
-    'windows-2022': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0, 'storage_gb': 14, 'name': 'Windows 4-core (windows-2022)', 'sku': 'windows', 'is_free_public': True, 'private_vcpus': 2, 'private_ram_gb': 7, 'private_cost_per_min': 0.010},
-    
-    # Larger Windows x64 runners (GitHub Team/Enterprise Cloud)
-    'windows-4-core': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.022, 'storage_gb': 14, 'name': 'Windows 4-core Larger Runner', 'sku': 'windows_4_core', 'is_larger': True},
-    'windows-8-core': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.042, 'storage_gb': 14, 'name': 'Windows 8-core Larger Runner', 'sku': 'windows_8_core', 'is_larger': True},
-    'windows-16-core': {'vcpus': 16, 'ram_gb': 64, 'cost_per_min': 0.082, 'storage_gb': 14, 'name': 'Windows 16-core Larger Runner', 'sku': 'windows_16_core', 'is_larger': True},
-    'windows-32-core': {'vcpus': 32, 'ram_gb': 128, 'cost_per_min': 0.162, 'storage_gb': 14, 'name': 'Windows 32-core Larger Runner', 'sku': 'windows_32_core', 'is_larger': True},
-    'windows-64-core': {'vcpus': 64, 'ram_gb': 256, 'cost_per_min': 0.322, 'storage_gb': 14, 'name': 'Windows 64-core Larger Runner', 'sku': 'windows_64_core', 'is_larger': True},
-    'windows-96-core': {'vcpus': 96, 'ram_gb': 384, 'cost_per_min': 0.482, 'storage_gb': 14, 'name': 'Windows 96-core Larger Runner', 'sku': 'windows_96_core', 'is_larger': True},
-    
-    # Larger Windows ARM64 runners (GitHub Team/Enterprise Cloud)
-    'windows-4-core-arm': {'vcpus': 4, 'ram_gb': 16, 'cost_per_min': 0.014, 'storage_gb': 14, 'name': 'Windows ARM 4-core Larger Runner', 'sku': 'windows_4_core_arm', 'is_larger': True},
-    'windows-8-core-arm': {'vcpus': 8, 'ram_gb': 32, 'cost_per_min': 0.026, 'storage_gb': 14, 'name': 'Windows ARM 8-core Larger Runner', 'sku': 'windows_8_core_arm', 'is_larger': True},
-    
-    # Standard macOS Intel runners (free tier, all repositories)
-    'macos-13': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-13)', 'sku': 'macos'},
-    'macos-15-intel': {'vcpus': 4, 'ram_gb': 14, 'cost_per_min': 0.062, 'storage_gb': 14, 'name': 'macOS 4-core Intel (macos-15-intel)', 'sku': 'macos'},
-    
-    # Standard macOS Apple Silicon (M1) runners (free tier, all repositories)
-    'macos-latest': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-latest)', 'sku': 'macos'},
-    'macos-14': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-14)', 'sku': 'macos'},
-    'macos-15': {'vcpus': 3, 'ram_gb': 7, 'cost_per_min': 0.028, 'storage_gb': 14, 'name': 'macOS 3-core M1 (macos-15)', 'sku': 'macos'},
-    
-    # Larger macOS Intel runners (GitHub Team/Enterprise Cloud)
-    'macos-13-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-13-large)', 'sku': 'macos_l', 'is_larger': True},
-    'macos-14-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-14-large)', 'sku': 'macos_l', 'is_larger': True},
-    'macos-15-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-15-large)', 'sku': 'macos_l', 'is_larger': True},
-    'macos-latest-large': {'vcpus': 12, 'ram_gb': 30, 'cost_per_min': 0.077, 'storage_gb': 14, 'name': 'macOS 12-core Large Intel (macos-latest-large)', 'sku': 'macos_l', 'is_larger': True},
-    
-    # Larger macOS Apple Silicon (M2) XLarge runners (GitHub Team/Enterprise Cloud)
-    'macos-13-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-13-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
-    'macos-14-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-14-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
-    'macos-15-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-15-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
-    'macos-latest-xlarge': {'vcpus': 5, 'ram_gb': 14, 'cost_per_min': 0.102, 'storage_gb': 14, 'name': 'macOS 5-core XLarge M2 (macos-latest-xlarge)', 'sku': 'macos_xl', 'is_larger': True},
-}
 
-# Utilization thresholds for scoring
-UTILIZATION_THRESHOLDS = {
-    'excellent': 70,  # 70%+ utilization = excellent
-    'good': 50,       # 50-70% = good
-    'fair': 30,       # 30-50% = fair
-    'poor': 0,        # <30% = poor (wasting resources)
-}
-
-# Free (public repo) runner labels - these are free on public repos
+# Canonical free standard runner labels (free on public repos only)
 FREE_RUNNER_LABELS = {
     'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
     'windows-latest', 'windows-2025', 'windows-2022',
-    'macos-latest', 'macos-14', 'macos-15', 'macos-26',
-    'macos-13', 'macos-15-intel',
-    'ubuntu-slim', 'ubuntu-24.04-arm', 'ubuntu-22.04-arm',
-    'windows-11-arm'
-}
-
-# Standard Ubuntu version labels (for exclusion in large runner detection)
-STANDARD_UBUNTU_VERSIONS = ['ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-20.04']
-
-# Keywords that indicate a large/premium runner (typically paid)
-LARGE_RUNNER_KEYWORDS = ['large', 'xlarge', 'bigger', 'premium']
-
-# Canonical GitHub runner labels (exact match only)
-CANONICAL_RUNNER_LABELS = {
-    # Standard Linux
-    'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
-    # Larger Linux
-    'linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
-    # Standard Windows
-    'windows-latest', 'windows-2025', 'windows-2022',
-    # Larger Windows
-    'windows-4-core', 'windows-8-core',
-    # Standard macOS
     'macos-latest',
-    # Larger macOS
-    'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
-    'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge'
 }
 
-def normalize_runner_label(name, runner_os_hint=None):
-    """Normalize non-standard runner names to known canonical types.
+# Minimal catalog of runner specs used for detection and messaging
+# Pricing updated to January 2026 rates per GitHub Actions Runner Pricing
+GITHUB_RUNNERS = {
+    # Standard hosted runners (2-core)
+    'ubuntu-latest': {
+        'sku': 'linux', 'name': 'Ubuntu Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.006,
+        'cost_per_min': 0.006,
+    },
+    'ubuntu-24.04': {
+        'sku': 'linux', 'name': 'Ubuntu 24.04 Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.006,
+        'cost_per_min': 0.006,
+    },
+    'ubuntu-22.04': {
+        'sku': 'linux', 'name': 'Ubuntu 22.04 Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.006,
+        'cost_per_min': 0.006,
+    },
+    'windows-latest': {
+        'sku': 'windows', 'name': 'Windows Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.010,
+        'cost_per_min': 0.010,
+    },
+    'windows-2025': {
+        'sku': 'windows', 'name': 'Windows 2025 Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.010,
+        'cost_per_min': 0.010,
+    },
+    'windows-2022': {
+        'sku': 'windows', 'name': 'Windows 2022 Standard Runner',
+        'vcpus': 2, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.010,
+        'cost_per_min': 0.010,
+    },
+    'macos-latest': {
+        'sku': 'macos', 'name': 'macOS Standard Runner',
+        'vcpus': 3, 'ram_gb': 7,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.062,
+        'cost_per_min': 0.062,
+    },
 
-    Examples:
-      - 'tsvi-linux8cores' → 'linux-8-core'
-      - 'linux-4c' → 'linux-4-core'
-      - 'win8core' → 'windows-8-core'
-      - 'macos-xlarge' → 'macos-latest-xlarge'
-      - 'ubuntu-large-xyz123' → None (triggers spec-based detection)
-      - 'randomized-linux-runner' → None (triggers spec-based detection)
-    """
-    if not name:
-        logging.debug("normalize_runner_label: No name provided")
-        return None
-    n = name.strip().lower()
-    logging.debug(f"normalize_runner_label: Attempting to normalize '{name}' (lowercase: '{n}')")
+    # Larger Linux x64
+    'linux-4-core': {
+        'sku': 'linux', 'name': 'Linux 4-core Larger Runner',
+        'vcpus': 4, 'ram_gb': 16,
+        'is_larger': True,
+        'cost_per_min': 0.012,
+    },
+    'linux-8-core': {
+        'sku': 'linux', 'name': 'Linux 8-core Larger Runner',
+        'vcpus': 8, 'ram_gb': 32,
+        'is_larger': True,
+        'cost_per_min': 0.022,
+    },
+    # Larger Linux ARM (cheaper than x64)
+    'linux-4-core-arm': {
+        'sku': 'linux', 'name': 'Linux 4-core ARM Larger Runner',
+        'vcpus': 4, 'ram_gb': 16,
+        'is_larger': True,
+        'cost_per_min': 0.008,
+    },
+    'linux-8-core-arm': {
+        'sku': 'linux', 'name': 'Linux 8-core ARM Larger Runner',
+        'vcpus': 8, 'ram_gb': 32,
+        'is_larger': True,
+        'cost_per_min': 0.014,
+    },
 
-    def contains_any(s, keys):
-        return any(k in s for k in keys)
+    # Larger Windows x64
+    'windows-4-core': {
+        'sku': 'windows', 'name': 'Windows 4-core Larger Runner',
+        'vcpus': 4, 'ram_gb': 16,
+        'is_larger': True,
+        'cost_per_min': 0.022,
+    },
+    'windows-8-core': {
+        'sku': 'windows', 'name': 'Windows 8-core Larger Runner',
+        'vcpus': 8, 'ram_gb': 32,
+        'is_larger': True,
+        'cost_per_min': 0.042,
+    },
+    # Larger Windows ARM (cheaper than x64)
+    'windows-4-core-arm': {
+        'sku': 'windows', 'name': 'Windows 4-core ARM Larger Runner',
+        'vcpus': 4, 'ram_gb': 16,
+        'is_larger': True,
+        'cost_per_min': 0.014,
+    },
+    'windows-8-core-arm': {
+        'sku': 'windows', 'name': 'Windows 8-core ARM Larger Runner',
+        'vcpus': 8, 'ram_gb': 32,
+        'is_larger': True,
+        'cost_per_min': 0.026,
+    },
 
-    # Decide OS family
-    os_family = None
-    if contains_any(n, ['linux', 'ubuntu', 'debian', 'rhel', 'centos']):
-        os_family = 'linux'
-    elif contains_any(n, ['win', 'windows']):
-        os_family = 'windows'
-    elif contains_any(n, ['mac', 'macos', 'osx', 'darwin']):
-        os_family = 'macos'
-    elif runner_os_hint:
-        hint = runner_os_hint.lower()
-        if 'linux' in hint:
-            os_family = 'linux'
-        elif 'windows' in hint:
-            os_family = 'windows'
-        elif 'macos' in hint or 'darwin' in hint:
-            os_family = 'macos'
+    # Larger macOS Intel (Large) runners - 12-core
+    'macos-13-large': {
+        'sku': 'macos', 'name': 'macOS 13 Large Runner (Intel)',
+        'vcpus': 12, 'ram_gb': 30,
+        'is_larger': True,
+        'cost_per_min': 0.077,
+    },
+    'macos-14-large': {
+        'sku': 'macos', 'name': 'macOS 14 Large Runner (Intel)',
+        'vcpus': 12, 'ram_gb': 30,
+        'is_larger': True,
+        'cost_per_min': 0.077,
+    },
+    'macos-15-large': {
+        'sku': 'macos', 'name': 'macOS 15 Large Runner (Intel)',
+        'vcpus': 12, 'ram_gb': 30,
+        'is_larger': True,
+        'cost_per_min': 0.077,
+    },
+    'macos-latest-large': {
+        'sku': 'macos', 'name': 'macOS Large Runner (Intel)',
+        'vcpus': 12, 'ram_gb': 30,
+        'is_larger': True,
+        'cost_per_min': 0.077,
+    },
 
-    logging.debug(f"normalize_runner_label: Detected OS family: {os_family}")
-
-    # Only accept exact canonical labels; do not infer from patterns or keywords
-    if n in CANONICAL_RUNNER_LABELS:
-        logging.debug(f"normalize_runner_label: Exact canonical match for '{n}'")
-        return n
-
-    # No mapping - return None to trigger spec-based detection
-    logging.debug(f"normalize_runner_label: Non-canonical label '{name}' → using spec-based detection")
-    return None
+    # Larger macOS Apple Silicon (XLarge M2 Pro) runners - 5-core
+    'macos-13-xlarge': {
+        'sku': 'macos', 'name': 'macOS 13 XLarge Runner (M2)',
+        'vcpus': 5, 'ram_gb': 14,
+        'is_larger': True,
+        'cost_per_min': 0.102,
+    },
+    'macos-14-xlarge': {
+        'sku': 'macos', 'name': 'macOS 14 XLarge Runner (M2)',
+        'vcpus': 5, 'ram_gb': 14,
+        'is_larger': True,
+        'cost_per_min': 0.102,
+    },
+    'macos-15-xlarge': {
+        'sku': 'macos', 'name': 'macOS 15 XLarge Runner (M2)',
+        'vcpus': 5, 'ram_gb': 14,
+        'is_larger': True,
+        'cost_per_min': 0.102,
+    },
+    'macos-latest-xlarge': {
+        'sku': 'macos', 'name': 'macOS XLarge Runner (M2)',
+        'vcpus': 5, 'ram_gb': 14,
+        'is_larger': True,
+        'cost_per_min': 0.102,
+    },
+}
 
 def get_repo_visibility_from_data(data):
-    """Get repository visibility from telemetry data, with env fallback.
-    
-    Returns:
-        'public' or 'private'
+    """Determine repository visibility ('public' or 'private').
+    Uses data.github_context.repository_visibility if available; otherwise falls back to environment.
+    Defaults to 'private' for safety.
     """
-    # First check if captured in telemetry data (and it's not N/A or empty)
-    ctx = data.get('github_context', {})
-    captured_visibility = ctx.get('repository_visibility', '').lower()
-    if captured_visibility in ['public', 'private']:
-        return captured_visibility
+    ctx = {}
+    if isinstance(data, dict):
+        ctx = data.get('github_context', {}) or {}
+    vis = str(ctx.get('repository_visibility', '')).lower().strip()
+    if vis in ('public', 'private'):
+        return vis
+    # Fallback to env-provided visibility
+    repo_visibility = os.environ.get('REPO_VISIBILITY', 'auto').lower().strip()
+    if repo_visibility in ('public', 'private'):
+        return repo_visibility
+    github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', 'private').lower().strip()
+    return github_repo_visibility
+
+def normalize_runner_label(name: str, runner_os_hint: str = None):
+    """Normalize a runner label to a canonical GitHub label.
+    Returns the canonical label if recognized; otherwise returns None.
+    Case-insensitive; does not attempt fuzzy matching for non-standard names.
+    """
+    if not name or not str(name).strip():
+        return None
+    n = str(name).strip().lower()
+
+    canonical_labels = {
+        # Standard hosted labels
+        'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
+        'windows-latest', 'windows-2025', 'windows-2022',
+        'macos-latest',
+        # Larger Linux
+        'linux-4-core', 'linux-8-core', 'linux-4-core-arm', 'linux-8-core-arm',
+        # Larger Windows
+        'windows-4-core', 'windows-8-core', 'windows-4-core-arm', 'windows-8-core-arm',
+        # Larger macOS
+        'macos-13-large', 'macos-14-large', 'macos-15-large', 'macos-latest-large',
+        'macos-13-xlarge', 'macos-14-xlarge', 'macos-15-xlarge', 'macos-latest-xlarge',
+    }
+    if n in canonical_labels:
+        return n
+    # Do not attempt to normalize arbitrary or randomized names; rely on spec-based detection later
+    return None
+
+# Helper: macOS labels documentation link (top-level)
+def macos_labels_doc_line():
+    return ('See: [Available macOS larger runners and labels]('
+            'https://docs.github.com/en/enterprise-cloud@latest/actions/reference/runners/larger-runners#available-macos-larger-runners-and-labels)')
+
+def infer_runner_architecture(runner_name: str, explicit_arch: str = None) -> str:
+    """Infer runner architecture from runner name if not explicitly provided.
     
-    # Fall back to environment variables
-    # Try REPO_VISIBILITY first (user-set override)
-    repo_visibility = os.environ.get('REPO_VISIBILITY', '').lower()
-    if repo_visibility == 'public':
-        return 'public'
-    elif repo_visibility == 'private':
-        return 'private'
-    
-    # Try GitHub's official environment variable
-    github_repo_visibility = os.environ.get('GITHUB_REPOSITORY_VISIBILITY', '').lower()
-    if github_repo_visibility in ['public', 'private']:
-        return github_repo_visibility
-    
-    # Last resort: default to private for safety (unknown visibility = assume paid)
-    return 'private'
+    - Linux/Windows ARM runners contain 'arm' in name
+    - macOS xlarge runners are Apple Silicon M2 (ARM64)
+    - macOS large runners are Intel (X64)
+    - Default to X64 for everything else
+    """
+    if explicit_arch:
+        return explicit_arch
+    if not runner_name:
+        return 'X64'
+    name_lower = runner_name.lower()
+    if 'arm' in name_lower:
+        return 'ARM64'
+    if 'xlarge' in name_lower and 'macos' in name_lower:
+        return 'ARM64'  # macOS xlarge = Apple Silicon M2
+    return 'X64'
 
 def is_runner_free(runner_type, is_public_repo=None, requested_runner_name=None):
     """Determine if a runner is free to use (public repo on standard runner).
@@ -361,8 +451,8 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
     Scoring logic:
     - A (90%+): Optimal utilization - job fits runner well
     - B (70-89%): Good utilization - acceptable
-    - C (50-69%): Fair utilization - could optimize
-    - D (<50%): Poor utilization - significant wasted capacity
+    - C (30-69%): Fair utilization - could optimize
+    - D (<30%): Poor utilization - significant wasted capacity
     
     Overutilization flags (when either CPU or memory peaks at 90%+):
     - Job is too big for current runner → recommend upgrade
@@ -386,8 +476,8 @@ def get_utilization_grade(utilization_pct, max_cpu_pct=None, max_mem_pct=None):
         return 'A', '🟢 Excellent', 'Runner is well-utilized for this workload'
     elif utilization_pct >= UTILIZATION_THRESHOLDS['good']:
         return 'B', '🟢 Good', 'Runner utilization is healthy'
-    elif utilization_pct >= UTILIZATION_THRESHOLDS['fair']:
-        return 'C', '🟡 Fair', 'Consider optimizing or using a smaller runner'
+    elif utilization_pct >= 30:  # Aligned with strategy section thresholds
+        return 'C', '🟡 Fair', 'Good with room for improvement'
     else:
         return 'D', '🔴 Poor', 'Runner is significantly underutilized'
 
@@ -484,7 +574,8 @@ def detect_runner_type(data, is_public_repo=None):
     
     initial = data.get('initial_snapshot', {})
     cpu_count = initial.get('cpu_count', 2)
-    memory_mb = initial.get('memory_total_mb', 7000)  # Default to ~7GB
+    # Use total memory from the nested memory object; previous key was incorrect
+    memory_mb = initial.get('memory', {}).get('total_mb', 7000)  # Default to ~7GB
     memory_gb = memory_mb / 1024
     
     logging.info(f"detect_runner_type: System specs - CPU cores: {cpu_count}, Memory: {memory_gb:.1f}GB")
@@ -553,19 +644,7 @@ def detect_runner_type(data, is_public_repo=None):
     
     # If we found a good match (score < 15 allows for some variance), return it
     if best_match and best_match_score < 15:
-        # Prefer standard free runner labels for public repositories
-        if is_public_repo:
-            best_specs = GITHUB_RUNNERS.get(best_match, {})
-            if best_specs.get('is_larger'):
-                if 'linux' in runner_os:
-                    logging.info("detect_runner_type: Public repo - overriding larger match to 'ubuntu-latest'")
-                    return 'ubuntu-latest'
-                elif 'windows' in runner_os:
-                    logging.info("detect_runner_type: Public repo - overriding larger match to 'windows-latest'")
-                    return 'windows-latest'
-                elif 'macos' in runner_os:
-                    logging.info("detect_runner_type: Public repo - overriding larger match to 'macos-latest'")
-                    return 'macos-latest'
+        # Do not override larger runner classification for public repos; billing handled separately
         logging.info(f"detect_runner_type: Matched to '{best_match}' with score {best_match_score:.2f}")
         return best_match
     
@@ -619,15 +698,20 @@ def detect_runner_type(data, is_public_repo=None):
         logging.info("detect_runner_type: Hosting-type signals indicate Self-hosted")
         is_likely_self_hosted = True
     
-    # For public repositories, prefer standard free runner labels for billing/messaging
+    # For public repositories, prefer standard labels only when fallback is already standard.
+    # Keep larger runner classification to ensure accurate paid billing guidance.
     if is_public_repo:
-        if 'linux' in runner_os:
-            fallback_runner = 'ubuntu-latest'
-        elif 'windows' in runner_os:
-            fallback_runner = 'windows-latest'
-        elif 'macos' in runner_os:
-            fallback_runner = 'macos-latest'
-        logging.info(f"detect_runner_type: Public repo - preferring standard runner '{fallback_runner}' for billing/messaging")
+        fallback_specs = GITHUB_RUNNERS.get(fallback_runner, {})
+        if not fallback_specs.get('is_larger'):
+            if 'linux' in runner_os:
+                fallback_runner = 'ubuntu-latest'
+            elif 'windows' in runner_os:
+                fallback_runner = 'windows-latest'
+            elif 'macos' in runner_os:
+                fallback_runner = 'macos-latest'
+            logging.info(f"detect_runner_type: Public repo - preferring standard runner '{fallback_runner}' for billing/messaging")
+        else:
+            logging.info("detect_runner_type: Public repo - larger runner detected; keeping classification")
 
     if is_likely_self_hosted:
         logging.info(f"detect_runner_type: Detected likely self-hosted runner, using fallback '{fallback_runner}' (unclassified)")
@@ -895,8 +979,6 @@ def calculate_cost_analysis(data, utilization, analyzed_steps=None):
                 comparative_cost = duration_minutes * comparable_specs['cost_per_min']
                 comparative_monthly = comparative_cost * monthly_runs
         # Also surface nearest alternatives for UI when no exact comparable
-        if nearest_larger_key:
-            nearest_larger_specs = GITHUB_RUNNERS.get(nearest_larger_key)
         if nearest_smaller_key:
             nearest_smaller_specs = GITHUB_RUNNERS.get(nearest_smaller_key)
 
@@ -1048,11 +1130,15 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
         elif 'windows' in recommended:
             recommended = 'windows-8-core' if current_cores >= 4 else 'windows-4-core'
         elif 'macos' in recommended:
-            # Prefer Apple Silicon xlarge or Intel large depending on current family
-            if 'latest' in current_runner_type or '14' in current_runner_type or '15' in current_runner_type:
-                recommended = 'macos-14-xlarge'
+            # Keep macOS xlarge recommendations even if core count appears lower (Apple Silicon)
+            if 'xlarge' in recommended:
+                pass  # keep the xlarge recommendation (stability/throughput benefits)
             else:
-                recommended = 'macos-13-large'
+                # Prefer xlarge for modern macOS families
+                if any(tok in current_runner_type for tok in ['latest', '14', '15']):
+                    recommended = 'macos-15-xlarge'
+                else:
+                    recommended = 'macos-13-xlarge'
         # Refresh specs after escalation
         recommended_specs = GITHUB_RUNNERS.get(recommended, {})
         recommended_cores = recommended_specs.get('vcpus', recommended_cores)
@@ -1072,24 +1158,50 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
         recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
         is_upgrade_possible = recommended != current_runner_type
     
+    # Capacity guard: ensure recommended RAM can cover observed peak + headroom
+    # Use current runner RAM as baseline to estimate peak GB from max_mem_pct
+    current_ram_gb = current_specs.get('ram_gb', 0)
+    observed_peak_gb = (current_ram_gb * (max_mem_pct / 100.0)) if current_ram_gb else 0
+    required_ram_gb = observed_peak_gb * 1.25  # 25% headroom
+    recommended_ram_gb = recommended_specs.get('ram_gb', 0)
+    if is_upgrade_possible and recommended_ram_gb > 0 and required_ram_gb > 0:
+        if recommended_ram_gb < required_ram_gb:
+            # No suitable larger tier within same OS family for memory needs
+            is_upgrade_possible = False
+            # Keep current as effective recommendation to trigger optimization path
+            recommended = current_runner_type
+            recommended_specs = current_specs
+            recommended_cores = current_cores
+            recommended_cost_per_min = current_cost_per_min
+
     # Calculate speedup factor
     # Realistic speedup: assume near-linear scaling, but cap at 3x (diminishing returns)
     if is_upgrade_possible:
-        core_ratio = recommended_cores / current_cores if current_cores > 0 else 1.0
-        # Cap at 3x realistic speedup (not all workloads scale perfectly)
-        speedup_factor = min(core_ratio, 3.0)
+        # Special-case macOS xlarge (Apple Silicon) vs Intel 'large': treat as stability/throughput, not core-speedup
+        if ('macos' in recommended) and ('xlarge' in recommended) and ('large' in current_runner_type):
+            speedup_factor = 1.0
+        else:
+            core_ratio = recommended_cores / current_cores if current_cores > 0 else 1.0
+            # Cap at 3x realistic speedup (not all workloads scale perfectly)
+            speedup_factor = min(core_ratio, 3.0)
     else:
         speedup_factor = 1.0  # No upgrade available
     
     # Find reason based on what maxed out
     if max_cpu_pct >= 90 and max_mem_pct >= 90:
-        reason = f'Both CPU ({max_cpu_pct:.0f}%) and memory ({max_mem_pct:.0f}%) maxed - needs more resources'
+        reason = f'Both CPU ({max_cpu_pct:.0f}%) and memory ({max_mem_pct:.0f}%) are near limits.'
     elif max_cpu_pct >= 90:
-        reason = f'CPU maxed out at {max_cpu_pct:.0f}% - needs more compute cores'
+        reason = f'CPU maxed out at {max_cpu_pct:.0f}%.'
     elif max_mem_pct >= 90:
-        reason = f'Memory maxed out at {max_mem_pct:.0f}% - needs more RAM'
+        reason = f'Memory maxed out at {max_mem_pct:.0f}%.'
     else:
-        reason = 'Resources constrained - recommend upgrade'
+        reason = 'Resources constrained.'
+
+    # If upgrade isn't possible due to capacity guard, clarify reasoning for macOS family
+    if not is_upgrade_possible:
+        # Tailor message when constrained by memory headroom
+        if recommended == current_runner_type and current_ram_gb and required_ram_gb > current_ram_gb:
+            reason += ' Observed memory usage exceeds available headroom for same-family upgrades; focus on optimization or increasing capacity.'
     
     # Determine speedup messaging based on core upgrade
     if speedup_factor >= 3.0:
@@ -1216,22 +1328,27 @@ def generate_utilization_section(data, analyzed_steps=None):
             if eq_specs:
                 section += "**Recommended equivalent GitHub-hosted option**\n\n"
                 section += "| Runner | Cores | RAM | Cost/min | Why |\n|:--|--:|--:|--:|:--|\n"
-                section += f"| `{eq_specs['name']}` | {eq_specs.get('vcpus','-')} | {eq_specs.get('ram_gb','-')} GB | ${eq_specs.get('cost_per_min',0):.3f} | {eq_reason or ''} |\n\n"
+                section += f"| `{eq_specs['name']}` | {eq_specs.get('vcpus','-')} | {eq_specs.get('ram_gb','-')} GB | {format_cost(eq_specs.get('cost_per_min',0))} | {eq_reason or ''} |\n\n"
 
             if comp_specs and comp_cost is not None:
                 section += "**What if you used a comparable GitHub-hosted runner?**\n\n"
                 section += "| Metric | Value |\n|:-------|------:|\n"
                 section += f"| **Comparable Runner** | `{comp_specs['name']}` |\n"
-                section += f"| **Est. Per Run** | ${comp_cost:.4f} ({int(cost_analysis['duration_minutes'])} min) |\n"
+                section += f"| **Est. Per Run** | {format_cost(comp_cost)} ({int(cost_analysis['duration_minutes'])} min) |\n"
                 section += f"| **Est. Monthly** (10 runs/day) | ${comp_monthly:.2f} |\n\n"
             else:
+                # Check if runner is overutilized (don't suggest smaller runners when already resource-constrained)
+                is_overutilized = utilization.get('max_cpu_pct', 0) >= 90 or utilization.get('max_mem_pct', 0) >= 90
+                
                 section += "No exact same-size GitHub-hosted runner found. Closest options:\n\n"
-                if nl_specs or ns_specs:
+                if nl_specs or (ns_specs and not is_overutilized):
                     section += "| Option | Runner | Cores | RAM | Cost/min |\n|:--|:--|--:|--:|--:|\n"
                     if nl_specs:
-                        section += f"| Larger (upgrade) | `{nl_specs['name']}` | {nl_specs.get('vcpus','-')} | {nl_specs.get('ram_gb','-')} GB | ${nl_specs.get('cost_per_min',0):.3f} |\n"
-                    if ns_specs:
-                        section += f"| Smaller (downgrade) | `{ns_specs['name']}` | {ns_specs.get('vcpus','-')} | {ns_specs.get('ram_gb','-')} GB | ${ns_specs.get('cost_per_min',0):.3f} |\n"
+                        section += f"| Larger (upgrade) | `{nl_specs['name']}` | {nl_specs.get('vcpus','-')} | {nl_specs.get('ram_gb','-')} GB | {format_cost(nl_specs.get('cost_per_min',0))} |\n"
+                    if ns_specs and not is_overutilized:
+                        section += f"| Smaller (downgrade) | `{ns_specs['name']}` | {ns_specs.get('vcpus','-')} | {ns_specs.get('ram_gb','-')} GB | {format_cost(ns_specs.get('cost_per_min',0))} |\n"
+                elif is_overutilized and not nl_specs:
+                    section += "No larger GitHub-hosted runner available for this OS. Consider optimizing the workload or increasing self-hosted capacity.\n"
                 section += "\n"
 
             section += "Benefits of GitHub-hosted runners:\n"
@@ -1243,7 +1360,7 @@ def generate_utilization_section(data, analyzed_steps=None):
             section += "> Private networking: You can connect GitHub-hosted runners to resources on a private network (package registries, secret managers, on-prem services). See [Private networking for GitHub-hosted runners](https://docs.github.com/en/enterprise-cloud@latest/actions/concepts/runners/private-networking).\n\n"
         # Skip cost analysis for free runners - cost analysis doesn't apply when price is $0
         elif not is_free:
-            cost_display = f"${cost_analysis['current_cost']:.4f} ({int(cost_analysis['duration_minutes'])} min)"
+            cost_display = f"{format_cost(cost_analysis['current_cost'])} ({int(cost_analysis['duration_minutes'])} min)"
             monthly_cost_display = f"${cost_analysis['monthly_cost']:.2f}"
             
             section += f'''### 💵 Cost Analysis (Jan 2026+ Pricing)
@@ -1284,10 +1401,13 @@ This job ran on `{cost_analysis['runner_specs']['name']}` at **no cost** (standa
 >
 > | | Current | Right-Sized | Savings |
 > |:--|--------:|----------:|--------:|
-> | **Per Run** | ${cost_analysis['current_cost']:.4f} | ${cost_analysis['current_cost'] - cost_analysis['potential_savings']:.4f} | **${cost_analysis['potential_savings']:.4f}** ({savings_pct:.0f}%) |
+> | **Per Run** | {format_cost(cost_analysis['current_cost'])} | {format_cost(cost_analysis['current_cost'] - cost_analysis['potential_savings'])} | **{format_cost(cost_analysis['potential_savings'])}** ({savings_pct:.0f}%) |
 > | **Monthly** | ${cost_analysis['monthly_cost']:.2f} | ${cost_analysis['monthly_cost'] - cost_analysis['monthly_savings']:.2f} | **${cost_analysis['monthly_savings']:.2f}** |
 >
-> To make this change, update your workflow's `runs-on:` configuration.
+> If you choose to change runners, select an equivalent size in the same OS family. Typical availability:
+> - Linux: standard (ubuntu-latest) and larger 4-core, 8-core sizes.
+> - Windows: standard (windows-latest) and larger 4-core, 8-core sizes.
+> - macOS: standard (macos-latest), larger (e.g., 12‑core), and xlarge options.
 >
 > **Learn more:** 
 > - [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
@@ -1379,7 +1499,27 @@ GitHub hosted runners are most useful when jobs finish quickly and resources mat
         is_custom_runner = upgrade_rec['recommended'] not in GITHUB_RUNNERS
         
         if upgrade_rec['is_upgrade_possible'] and not is_custom_runner:
-            # Show upgrade recommendation
+            # macOS: reference official docs instead of prescribing a specific label
+            if 'macos' in current_runner.lower():
+                section += f'''
+**Priority: Consider macOS Larger Runners ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+For macOS, choose from larger runner families based on workload characteristics and memory needs:
+- **Large (Intel):** 12 CPU, 30 GB RAM
+- **XLarge (Apple Silicon M2):** 5 CPU (+8 GPU), 14 GB RAM
+
+{macos_labels_doc_line()}
+Pricing: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+**Note:** Larger runners require a **GitHub Team or GitHub Enterprise Cloud** plan.
+'''
+                # Skip prescriptive label and detailed cost calc for macOS per policy
+                return section
+            # Non-macOS path: show specific upgrade recommendation
             recommended_runner = GITHUB_RUNNERS.get(upgrade_rec['recommended'], {})
             current_cost_per_min = upgrade_rec['current_cost_per_min']
             # Adjust current cost for private repos on standard runners
@@ -1478,11 +1618,11 @@ GitHub hosted runners are most useful when jobs finish quickly and resources mat
 **Note:** You're currently using a free runner (public repo benefit). This recommendation requires switching to a paid larger runner.'''
             elif cost_diff < 0:
                 savings_pct = abs(cost_diff / current_run_cost * 100)
-                upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~${abs(cost_diff):.4f}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
+                upgrade_note = f'**✅ Cost Savings!** The faster runner saves ~{format_cost(abs(cost_diff))}/run ({savings_pct:.0f}% cheaper). Plus ${hidden_value_saved:.0f}/month in developer productivity and ${timeout_savings:.0f}/month from fewer timeouts.'
             elif abs(cost_diff) < 0.0001:  # Same cost (within rounding)
                 upgrade_note = f'**✅ Same Cost, {speedup_factor:.1f}x Faster!** Get {speedup_factor:.1f}x faster job execution at the same price.\n\n**Hidden Value Breakdown:**\n- Developer waiting time: {time_saved_per_month_hours:.1f} hours/month = **${hidden_value_saved:.0f}/month**\n- Fewer timeouts: {timeouts_per_month_current:.0f}→{timeouts_per_month_new:.0f} per month = **${timeout_savings:.0f}/month savings** {timeout_assumptions}\n\n**Total Hidden Value: ~${total_hidden_value:.0f}/month** in productivity and reliability improvements!'
             elif speedup_factor > 1.5:
-                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of ${abs(cost_diff):.4f}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability {timeout_assumptions}.'
+                upgrade_note = f'**💡 Fast Execution:** {speedup_factor:.1f}x faster = quicker feedback. Additional cost of {format_cost(abs(cost_diff))}/run is more than offset by {time_saved_per_month_hours:.1f} hours of saved developer time (~${hidden_value_saved:.0f}/month) and ${timeout_savings:.0f}/month from improved reliability {timeout_assumptions}.'
             else:
                 upgrade_note = '**💡 Trade-off:** Slightly higher cost, but better reliability and resource availability.'
             
@@ -1497,20 +1637,29 @@ Your job is **straining resources** on the current runner:
 
 **Why:** {upgrade_rec['reason']}
 
-**Expected Performance:** {upgrade_rec['speedup_estimate']} (upgrade from {upgrade_rec['cores'] / speedup_factor:.0f} to {upgrade_rec['cores']} cores)
-
-**Cost Impact (accounting for faster execution):**
 '''
+            # Only show core comparison when increasing cores
+            # Use measured cores from telemetry for the current runner
+            current_specs_for_msg = GITHUB_RUNNERS.get(current_runner, {})
+            current_cores_for_msg = utilization.get('total_cpu_cores', current_specs_for_msg.get('vcpus', 0))
+            if upgrade_rec['cores'] > current_cores_for_msg:
+                section += f"**Expected Performance:** {upgrade_rec['speedup_estimate']} (upgrade from {current_cores_for_msg} to {upgrade_rec['cores']} cores)\n\n"
+            else:
+                section += f"**Expected Performance:** {upgrade_rec['speedup_estimate']}\n\n"
+
+            section += """
+**Cost Impact (accounting for faster execution):**
+"""
             
             # Different cost display based on billing context
             if current_is_free and not new_is_free:
                 section += f'''- **Current: FREE** ({duration_min:.0f} min @ $0.00/min on public repository)
-- **Recommended: ${new_run_cost:.4f}/run** (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
-- **Additional cost per run: +${new_run_cost:.4f}**
+- **Recommended: {format_cost(new_run_cost)}/run** (est. {estimated_new_duration_min:.1f} min @ {format_cost(new_cost_per_min)}/min)
+- **Additional cost per run: +{format_cost(new_run_cost)}**
 
 **Monthly Cost Comparison** (if you run 10 times/day, 300 runs/month):
 - **Current: FREE** ($0/month on free tier)
-- **Recommended: ${new_monthly:.2f}/month** (${new_run_cost:.4f}/run × 300 runs)
+- **Recommended: ${new_monthly:.2f}/month** ({format_cost(new_run_cost)}/run × 300 runs)
 
 ⚠️ **Important Trade-off:** You're currently using GitHub's free runners available to public repositories. Upgrading to a larger runner means incurring costs, but you gain significant speed and reliability benefits listed above.
 '''
@@ -1519,22 +1668,27 @@ Your job is **straining resources** on the current runner:
                 cost_diff_pct = (cost_diff/current_run_cost*100) if current_run_cost > 0 else 0
                 monthly_diff_pct = (monthly_diff/current_monthly*100) if current_monthly > 0 else 0
                 
-                section += f'''- Current: ${current_run_cost:.4f}/run ({duration_min:.0f} min @ ${current_cost_per_min:.4f}/min)
-- Recommended: ${new_run_cost:.4f}/run (est. {estimated_new_duration_min:.1f} min @ ${new_cost_per_min:.4f}/min)
-- **Per-run difference: {'-$' if cost_diff < 0 else '+$'}{abs(cost_diff):.4f}** ({'-' if cost_diff < 0 else '+'}{cost_diff_pct:.0f}%)
+                section += f'''- Current: {format_cost(current_run_cost)}/run ({duration_min:.0f} min @ {format_cost(current_cost_per_min)}/min)
+- Recommended: {format_cost(new_run_cost)}/run (est. {estimated_new_duration_min:.1f} min @ {format_cost(new_cost_per_min)}/min)
+ - **Per-run difference: {'-' if cost_diff < 0 else '+'}{format_cost(abs(cost_diff))}** ({'-' if cost_diff < 0 else '+'}{abs(cost_diff_pct):.0f}%)
 
 **Monthly Cost Comparison** (10 runs/day, 300 runs/month):
 - Current: ${current_monthly:.2f}
 - Recommended: ${new_monthly:.2f}
-- **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{monthly_diff_pct:.0f}%)
+ - **Monthly difference: {'-$' if monthly_diff < 0 else '+$'}{abs(monthly_diff):.2f}** ({'-' if monthly_diff < 0 else '+'}{abs(monthly_diff_pct):.0f}%)
 '''
             
+            # Append upgrade note and avoid duplicating plan availability messaging
             section += f'''
 {upgrade_note}{plan_note}
 
 **How to Switch:**
+{'' if plan_note else '**Note:** Larger runners require a GitHub Team or GitHub Enterprise Cloud plan and must be set up by your organization administrator.'}
 
-**Note:** Larger runners require a GitHub Team or GitHub Enterprise Cloud plan and must be set up by your organization administrator.
+To change runners, choose a label in the same OS family. Typical availability:
+- Linux: standard (ubuntu-latest) and larger 4-core, 8-core sizes.
+- Windows: standard (windows-latest) and larger 4-core, 8-core sizes.
+- macOS: standard (macos-latest), larger (e.g., 12‑core), and xlarge options.
 
 For setup instructions, see: [GitHub Actions - Manage Larger Runners](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/larger-runners/manage-larger-runners)
 
@@ -1543,23 +1697,31 @@ For pricing details, see: [GitHub Actions Runner Pricing](https://docs.github.co
 '''
         else:
             # No standard upgrade available, or this is a custom runner
-            # For custom runners, recommend contacting org admin to increase resources
+            # For custom/self-hosted runners, provide two clear avenues
             if is_custom_runner or is_self_hosted_ctx:
-                                section += f'''
+                # Choose a reasonable hosted label to suggest if available
+                hosted_suggestion = cost_analysis.get('equivalent_runner_key') or cost_analysis.get('comparable_runner_key') or cost_analysis.get('nearest_larger_key') or cost_analysis.get('nearest_smaller_key')
+                section += f'''
 **Priority: Optimize or Consider Hosted Option**
 
 Your job is **straining resources** on the current runner:
 - CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
 - Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
 
+**Option A — Increase self-hosted capacity:**
+- Scale the machine or VM backing your runner (more vCPU/RAM).
+- Restart the runner service so jobs pick up the new resources.
+
+**Option B — Use a comparable GitHub-hosted runner:**
+- Switch to a hosted label sized for your job.
+Typical availability by OS family:
+- Linux: standard (ubuntu-latest) and larger 4-core, 8-core sizes.
+- Windows: standard (windows-latest) and larger 4-core, 8-core sizes.
+- macOS: standard (macos-latest), larger (e.g., 12‑core), and xlarge options.
+
 **Near-term optimizations:**
 
-1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix:
-   ```yaml
-   strategy:
-     matrix:
-       shard: [1, 2, 3, 4]
-   ```
+1. **Parallelize jobs** - Split work across parallel jobs using a matrix strategy.
 2. **Improve caching** - Cache dependencies to reduce build time
 
 3. **Profile slow steps** - Identify and optimize bottlenecks
@@ -1572,6 +1734,9 @@ Pricing: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-c
 Setup: [Manage Larger Runners](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/larger-runners/manage-larger-runners)
 
 '''
+                if 'macos' in current_runner.lower():
+                    section += macos_labels_doc_line() + "\n\n"
+
             elif current_runner in ['ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04']:
                 section += f'''
 **Priority: Optimize Build (or Upgrade to Larger Runner) ⚠️**
@@ -1584,12 +1749,7 @@ Your job is **straining resources** on the current runner:
 
 **Option 1: Optimize your build first** (recommended, free tier-friendly) - Most cost-effective solution:
 
-1. **Parallelize jobs** - Split work across parallel jobs using workflow matrix:
-   ```yaml
-   strategy:
-     matrix:
-       node-version: [18, 20, 22]
-   ```
+1. **Parallelize jobs** - Split work across a build/test matrix.
 
 2. **Improve caching** - Cache dependencies to reduce install time:
    - npm: Use `actions/setup-node@v4` with `cache: npm`
@@ -1658,7 +1818,30 @@ See [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@
 - If optimization hits a wall, consider larger runners (GitHub Team+ plans)
 
 '''
+            elif 'macos' in current_runner.lower():
+                # macOS-specific optimize path (when no upgrade available or already on large tier)
+                section += f'''
+**Priority: Optimize Build ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **{utilization['max_cpu_pct']:.1f}%** (avg: {utilization['avg_cpu_pct']:.1f}%)
+- Memory peaked at **{utilization['max_mem_pct']:.1f}%** (avg: {utilization['avg_mem_pct']:.1f}%)
+
+You're already on a larger macOS runner. Focus on optimization strategies:
+
+1. **Parallelize** - Use matrix strategy for independent jobs
+2. **Cache** - Improve dependency caching to reduce download time
+3. **Profile** - Identify and optimize slowest steps (especially Xcode builds)
+4. **Simplify** - Remove unnecessary dependencies and tools
+
+If you need more capacity, check available macOS runner tiers:
+{macos_labels_doc_line()}
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+'''
             else:
+                # Non-macOS generic optimize path
                 section += f'''
 **Priority: Optimize Build ⚠️**
 
@@ -1679,18 +1862,37 @@ Examples (subject to plan availability): Linux/Windows offer 16, 32, 64, or 96 v
 **More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
 
 '''
+
     elif utilization['score'] < 30 and not should_suppress_suggestions:
-        section += f'''
+        # Determine if downsizing is possible (paid runner with cheaper same-family option)
+        downsizing_possible = False
+        downsizing_label = None
+        if cost_analysis and (not is_free_runner):
+            if cost_analysis.get('right_sized_runner') and cost_analysis.get('runner_type'):
+                if cost_analysis['right_sized_runner'] != cost_analysis['runner_type'] and cost_analysis.get('potential_savings', 0) > 0:
+                    downsizing_possible = True
+                    downsizing_label = GITHUB_RUNNERS.get(cost_analysis['right_sized_runner'], {}).get('name', cost_analysis['right_sized_runner'])
+
+        section += """
 **Priority: High Utilization Improvement**
 
-1. **Right-size runner** - Use smaller instance (check suggestion above)
-2. **Parallelize jobs** - Use matrix builds for independent steps  
-3. **Optimize caching** - Cache dependencies to reduce download time
-4. **Check for bottlenecks** - Identify and optimize slow sequential steps
+"""
+        if downsizing_possible:
+            section += f"- **Right-size runner:** Switch to `{downsizing_label}` to cut cost per run.\n"
+        else:
+            section += "- **Right-size workflow:** Already on the smallest tier? Focus on workflow efficiency over runner size.\n"
 
-With these optimizations, you can typically achieve 50-70% utilization and {'reduce build time' if is_free_runner else 'reduce costs'} by 30-50%.
+        section += """
+- **Parallelize jobs:** Use matrix builds for independent steps  
+- **Optimize caching:** Cache dependencies to reduce download time
+- **Check for bottlenecks:** Identify and optimize slow sequential steps
 
-'''
+With these optimizations, you can typically achieve 50-70% utilization and {benefit} by 30-50%.
+
+""".format(benefit=('reduce build time' if is_free_runner else 'reduce costs'))
+        # macOS: include official labels documentation link across optimize guidance
+        if 'macos' in current_runner_type.lower():
+            section += macos_labels_doc_line() + "\n\n"
     elif utilization['score'] >= 70 and not should_suppress_suggestions:
         section += f'''
 **Status: Well-Optimized ✅**
@@ -1900,6 +2102,10 @@ def generate_report(data):
             max_swap = max(swap_values)
             fallback_applied_perf = True
     
+    # Avoid backslashes inside f-string expressions: precompute baseline notes
+    baseline_perf_note = "> ℹ️ Estimated baseline shown (no telemetry for I/O/CPU wait).\n" if fallback_applied_perf else ""
+    baseline_io_note = "> ℹ️ Estimated baseline shown (no I/O telemetry captured).\n" if fallback_applied_io else ""
+
     # Get health statuses
     _, cpu_icon = get_health_status(max_cpu, THRESHOLDS['cpu_warning'], THRESHOLDS['cpu_critical'])
     _, mem_icon = get_health_status(max_mem, THRESHOLDS['mem_warning'], THRESHOLDS['mem_critical'])
@@ -2055,8 +2261,7 @@ This shows the average CPU and memory usage during your job:
 | **CPU Steal** | {steal_icon} | {max_steal:.1f}% | {avg_steal:.1f}% |
 | **Swap Usage** | {swap_icon} | {max_swap:.1f}% | {avg_swap:.1f}% |
 
-{('> ℹ️ Estimated baseline shown (no telemetry for I/O/CPU wait).\n' if fallback_applied_perf else '')}
----
+{baseline_perf_note}
 
 ## 💾 I/O Summary
 
@@ -2067,7 +2272,7 @@ This shows the average CPU and memory usage during your job:
 | 🌐 **Network RX** | {format_bytes(total_net_rx * 1024 * 1024)} | {format_bytes(sum(net_rx) / len(net_rx) * 1024 * 1024)}/s |
 | 🌐 **Network TX** | {format_bytes(total_net_tx * 1024 * 1024)} | {format_bytes(sum(net_tx) / len(net_tx) * 1024 * 1024)}/s |
 
-{('> ℹ️ Estimated baseline shown (no I/O telemetry captured).\n' if fallback_applied_io else '')}
+{baseline_io_note}
 '''
 
     # Add per-step analysis if we have steps
@@ -2082,6 +2287,8 @@ This shows the average CPU and memory usage during your job:
         report += utilization_section
     
     # System information section
+    runner_name = ctx.get('runner_name', 'GitHub Hosted')
+    runner_arch = infer_runner_architecture(runner_name, ctx.get('runner_arch'))
     report += f'''
 ---
 
@@ -2089,9 +2296,9 @@ This shows the average CPU and memory usage during your job:
 
 | Component | Details |
 |:----------|:--------|
-| **Runner** | {ctx.get('runner_name', 'GitHub Hosted')} |
+| **Runner** | {runner_name} |
 | **OS** | {ctx.get('runner_os', 'Linux')} |
-| **Architecture** | {ctx.get('runner_arch', 'X64')} |
+| **Architecture** | {runner_arch} |
 | **Total Memory** | {initial.get('memory', {}).get('total_mb', 0):,} MB |
 | **CPU Cores** | {initial.get('cpu_count', 'N/A')} |
 
@@ -2314,7 +2521,7 @@ def generate_html_dashboard(data):
             <div class="meta">
                 Duration: {format_duration(duration)} • 
                 {len(samples)} samples • 
-                {ctx.get('runner_os', 'Linux')} / {ctx.get('runner_arch', 'X64')}
+                {ctx.get('runner_os', 'Linux')} / {infer_runner_architecture(ctx.get('runner_name', ''), ctx.get('runner_arch'))}
             </div>
         </div>
         
