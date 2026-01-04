@@ -874,9 +874,6 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
     """Collect a single sample of all metrics."""
     timestamp = time.time()
     
-    # CPU (calculate delta)
-    cpu_idle, cpu_total = get_cpu_usage()
-    cpu_percent = 0
     # CPU: handle both delta-based (Linux) and direct percentage (macOS/Windows)
     cpu_val1, cpu_val2 = get_cpu_usage()
     cpu_percent = 0
