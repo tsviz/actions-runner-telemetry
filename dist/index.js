@@ -73,6 +73,22 @@ function startCollector(interval) {
   fs.writeFileSync(pidPath, String(child.pid));
   child.unref();
   log(`✅ Telemetry collector started (PID: ${child.pid})`);
+  log(`   Log file: ${logPath}`);
+}
+
+function showCollectorLog() {
+  const logPath = path.join(TEMP_DIR, 'telemetry_collector.log');
+  if (fs.existsSync(logPath)) {
+    const content = fs.readFileSync(logPath, 'utf8');
+    if (content.trim()) {
+      log('📋 Collector log:');
+      log(content);
+    } else {
+      log('📋 Collector log is empty (collector may have crashed immediately)');
+    }
+  } else {
+    log('📋 No collector log file found');
+  }
 }
 
 function stopCollectorIfRunning() {
@@ -143,6 +159,12 @@ async function main() {
     case 'stop': {
       log('::group::📊 Stopping Telemetry & Generating Report');
       stopCollectorIfRunning();
+      // Check if data file exists before running stop
+      const dataFile = path.join(workspace, '.telemetry_data.json');
+      if (!fs.existsSync(dataFile)) {
+        log('⚠️  No telemetry data file found - showing collector log for debugging:');
+        showCollectorLog();
+      }
       await runPy('telemetry_collector.py', ['stop']);
       await runPy('generate_report.py');
       const outDir = workspace;
