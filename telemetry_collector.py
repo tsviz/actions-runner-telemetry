@@ -251,50 +251,52 @@ def _macos_get_swap_info():
 # --- Windows implementations ---
 
 def _windows_get_cpu_usage():
-    """Get CPU usage on Windows using wmic.
+    """Get CPU usage on Windows using PowerShell.
     
     Returns (cpu_percent, -1) to signal direct percentage mode.
     The -1 as second value tells collect_sample to use the first value directly.
     """
     try:
+        # Use PowerShell to get CPU usage (more reliable than deprecated wmic)
         result = subprocess.run(
-            ['wmic', 'cpu', 'get', 'loadpercentage'],
-            capture_output=True, text=True, timeout=10, shell=True
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-CimInstance Win32_Processor).LoadPercentage"],
+            capture_output=True, text=True, timeout=15
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-        if len(lines) >= 2 and lines[1].isdigit():
-            cpu_pct = int(lines[1])
-            return cpu_pct, -1  # -1 signals direct percentage mode
+        output = result.stdout.strip()
+        if output and output.isdigit():
+            cpu_pct = int(output)
+            return cpu_pct, -1
         return 0, -1
     except:
         return 0, -1
 
 
 def _windows_get_memory_info():
-    """Get memory info on Windows using wmic."""
+    """Get memory info on Windows using PowerShell."""
     try:
-        # Get total and free memory
+        # Use PowerShell to get memory info (more reliable than deprecated wmic)
         result = subprocess.run(
-            ['wmic', 'OS', 'get', 'TotalVisibleMemorySize,FreePhysicalMemory'],
-            capture_output=True, text=True, timeout=10, shell=True
+            ['powershell', '-NoProfile', '-Command',
+             "$os = Get-CimInstance Win32_OperatingSystem; "
+             "Write-Output \"$($os.TotalVisibleMemorySize) $($os.FreePhysicalMemory)\""],
+            capture_output=True, text=True, timeout=15
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        parts = result.stdout.strip().split()
         
-        if len(lines) >= 2:
-            parts = lines[1].split()
-            if len(parts) >= 2:
-                free_kb = int(parts[0])
-                total_kb = int(parts[1])
-                used_kb = total_kb - free_kb
-                
-                return {
-                    'total_mb': total_kb // 1024,
-                    'used_mb': used_kb // 1024,
-                    'available_mb': free_kb // 1024,
-                    'buffers_mb': 0,
-                    'cached_mb': 0,
-                    'percent': round((used_kb / total_kb) * 100, 2) if total_kb > 0 else 0
-                }
+        if len(parts) >= 2:
+            total_kb = int(parts[0])
+            free_kb = int(parts[1])
+            used_kb = total_kb - free_kb
+            
+            return {
+                'total_mb': total_kb // 1024,
+                'used_mb': used_kb // 1024,
+                'available_mb': free_kb // 1024,
+                'buffers_mb': 0,
+                'cached_mb': 0,
+                'percent': round((used_kb / total_kb) * 100, 2) if total_kb > 0 else 0
+            }
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
     except:
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
@@ -334,17 +336,18 @@ def _windows_get_load_average():
 
 
 def _windows_get_cpu_detailed():
-    """Get detailed CPU metrics on Windows."""
+    """Get detailed CPU metrics on Windows using PowerShell."""
     try:
         result = subprocess.run(
-            ['wmic', 'cpu', 'get', 'loadpercentage'],
-            capture_output=True, text=True, timeout=10, shell=True
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-CimInstance Win32_Processor).LoadPercentage"],
+            capture_output=True, text=True, timeout=15
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        output = result.stdout.strip()
         
         cpu_pct = 0
-        if len(lines) >= 2 and lines[1].isdigit():
-            cpu_pct = int(lines[1])
+        if output and output.isdigit():
+            cpu_pct = int(output)
         
         user = cpu_pct * 100
         idle = (100 - cpu_pct) * 100
@@ -365,17 +368,18 @@ def _windows_get_cpu_detailed():
 
 
 def _windows_get_swap_info():
-    """Get swap/page file info on Windows."""
+    """Get swap/page file info on Windows using PowerShell."""
     try:
         result = subprocess.run(
-            ['wmic', 'pagefile', 'get', 'AllocatedBaseSize,CurrentUsage'],
-            capture_output=True, text=True, timeout=10, shell=True
+            ['powershell', '-NoProfile', '-Command',
+             "$pf = Get-CimInstance Win32_PageFileUsage; "
+             "if ($pf) { Write-Output \"$($pf.AllocatedBaseSize) $($pf.CurrentUsage)\" } "
+             "else { Write-Output '0 0' }"],
+            capture_output=True, text=True, timeout=15
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        parts = result.stdout.strip().split()
         
-        if len(lines) >= 2:
-            parts = lines[1].split()
-            if len(parts) >= 2:
+        if len(parts) >= 2:
                 total_mb = int(parts[0])
                 used_mb = int(parts[1])
                 free_mb = total_mb - used_mb
