@@ -127,16 +127,31 @@ def _macos_get_memory_info():
 
 
 def _macos_get_disk_io():
-    """Get disk I/O on macOS using iostat."""
+    """Get disk I/O on macOS using ioreg to get cumulative bytes."""
     try:
         result = subprocess.run(
-            ['iostat', '-d', '-c', '1'],
+            ['ioreg', '-c', 'IOBlockStorageDriver', '-r', '-w', '0'],
             capture_output=True, text=True, timeout=5
         )
-        # iostat output varies, return cumulative bytes if available
-        # For now, return zeros - iostat on macOS doesn't easily give cumulative
-        return {'read_bytes': 0, 'write_bytes': 0}
-    except:
+        
+        total_read = 0
+        total_write = 0
+        
+        # Parse ioreg output for Statistics blocks
+        for line in result.stdout.split('\n'):
+            if 'Statistics' in line and 'Bytes (Read)' in line:
+                # Extract bytes read and write from the statistics line
+                import re
+                read_match = re.search(r'"Bytes \(Read\)"=(\d+)', line)
+                write_match = re.search(r'"Bytes \(Write\)"=(\d+)', line)
+                
+                if read_match:
+                    total_read += int(read_match.group(1))
+                if write_match:
+                    total_write += int(write_match.group(1))
+        
+        return {'read_bytes': total_read, 'write_bytes': total_write}
+    except Exception:
         return {'read_bytes': 0, 'write_bytes': 0}
 
 
