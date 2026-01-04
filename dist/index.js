@@ -182,6 +182,15 @@ async function main() {
       if (!fs.existsSync(dataFile)) {
         log('⚠️  No telemetry data file found - showing collector log for debugging:');
         showCollectorLog();
+      } else {
+        // Check if there are 0 samples - also show log for debugging
+        try {
+          const data = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+          if (!data.samples || data.samples.length === 0) {
+            log('⚠️  Data file exists but has 0 samples - showing collector log for debugging:');
+            showCollectorLog();
+          }
+        } catch (_) {}
       }
       await runPy('telemetry_collector.py', ['stop']);
       await runPy('generate_report.py');
