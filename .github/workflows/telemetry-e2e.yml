@@ -22,16 +22,37 @@ jobs:
           enabled: true
           interval: 1
 
-      - name: Simulate Build (CPU)
+      - name: Simulate Build (CPU-intensive, multi-threaded)
         shell: bash
         run: |
           python3 - <<'PY'
-          import math, time
-          s = 0
-          for i in range(2_000_000):
-              s += math.sin(i) * math.cos(i)
-          time.sleep(1)
-          print("build complete", s)
+          import math, time, threading, os
+
+          def cpu_work(thread_id, iterations):
+              """CPU-bound work on a single thread."""
+              s = 0
+              for i in range(iterations):
+                  s += math.sin(i) * math.cos(i) * math.sqrt(abs(math.tan(i % 1000 + 1)))
+              return s
+
+          # Use all available cores
+          num_threads = os.cpu_count() or 4
+          iterations_per_thread = 2_000_000
+          threads = []
+
+          print(f"Starting {num_threads} CPU threads...")
+          start = time.time()
+
+          for i in range(num_threads):
+              t = threading.Thread(target=cpu_work, args=(i, iterations_per_thread))
+              threads.append(t)
+              t.start()
+
+          for t in threads:
+              t.join()
+
+          elapsed = time.time() - start
+          print(f"Build complete in {elapsed:.1f}s using {num_threads} threads")
           PY
 
       - name: Mark Step - Build
@@ -40,16 +61,31 @@ jobs:
           mode: step
           step-name: Build
 
-      - name: Simulate Tests (Memory)
+      - name: Simulate Tests (Memory-intensive)
         shell: bash
         run: |
           python3 - <<'PY'
-          import time, random
+          import time, random, sys
+
+          # Allocate ~500MB of memory
+          print("Allocating memory...")
           data = []
-          for i in range(20):
-              data.append([random.random() for _ in range(500_000)])
-          time.sleep(2)
-          print("tests complete", len(data))
+          target_mb = 500
+          chunk_size = 1_000_000  # 1M floats = ~8MB
+
+          for i in range(target_mb // 8):
+              chunk = [random.random() for _ in range(chunk_size)]
+              data.append(chunk)
+              if (i + 1) % 10 == 0:
+                  allocated = (i + 1) * 8
+                  print(f"  Allocated {allocated}MB...")
+
+          # Hold memory and do some work
+          print(f"Holding {len(data) * 8}MB, processing...")
+          total = sum(sum(chunk[:1000]) for chunk in data)
+          time.sleep(3)
+
+          print(f"Tests complete, processed {len(data)} chunks, sample sum: {total:.2f}")
           PY
 
       - name: Mark Step - Test
@@ -57,6 +93,51 @@ jobs:
         with:
           mode: step
           step-name: Test
+
+      - name: Simulate Deploy (I/O-intensive)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, time, tempfile, random
+
+          print("Starting I/O workload...")
+
+          # Create temp directory
+          with tempfile.TemporaryDirectory() as tmpdir:
+              total_written = 0
+              total_read = 0
+              num_files = 20
+              file_size = 5 * 1024 * 1024  # 5MB per file
+
+              # Write phase
+              print(f"Writing {num_files} files of {file_size // 1024 // 1024}MB each...")
+              for i in range(num_files):
+                  filepath = os.path.join(tmpdir, f"testfile_{i}.bin")
+                  data = os.urandom(file_size)
+                  with open(filepath, 'wb') as f:
+                      f.write(data)
+                  total_written += file_size
+
+              print(f"Written {total_written // 1024 // 1024}MB")
+
+              # Read phase
+              print("Reading files back...")
+              for i in range(num_files):
+                  filepath = os.path.join(tmpdir, f"testfile_{i}.bin")
+                  with open(filepath, 'rb') as f:
+                      data = f.read()
+                  total_read += len(data)
+
+              print(f"Read {total_read // 1024 // 1024}MB")
+
+          print("Deploy simulation complete")
+          PY
+
+      - name: Mark Step - Deploy
+        uses: ./
+        with:
+          mode: step
+          step-name: Deploy
 
       - name: Stop Telemetry
         if: always()
