@@ -1163,14 +1163,19 @@ def start_collection():
     prev_net = None
     prev_ctxt = None
     
+    print("  📡 Starting collection loop...", flush=True)
+    sample_count = 0
     try:
         while True:
+            sample_count += 1
+            print(f"  [Sample {sample_count}] Collecting...", flush=True)
             try:
                 sample, prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt = collect_sample(
                     prev_cpu, prev_cpu_detailed, prev_disk, prev_net, prev_ctxt
                 )
+                print(f"  [Sample {sample_count}] CPU={sample.get('cpu_percent', 'N/A')}%", flush=True)
             except Exception as e:
-                print(f"  ⚠️  Sample collection error: {e}")
+                print(f"  ⚠️  Sample collection error: {e}", flush=True)
                 time.sleep(SAMPLE_INTERVAL)
                 continue
             
