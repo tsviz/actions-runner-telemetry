@@ -49,24 +49,32 @@ SAMPLE_INTERVAL = float(os.environ.get('TELEMETRY_INTERVAL', '2'))  # seconds
 # --- macOS implementations ---
 
 def _macos_get_cpu_usage():
-    """Get CPU usage on macOS using top command."""
+    """Get CPU usage on macOS using top command.
+    
+    Returns (cpu_percent, -1) to signal direct percentage mode.
+    The -1 as second value tells collect_sample to use the first value directly.
+    """
     try:
         # Use top in logging mode for a quick sample
+        # -l 2 takes two samples (first is since boot, second is interval-based)
         result = subprocess.run(
-            ['top', '-l', '1', '-n', '0'],
-            capture_output=True, text=True, timeout=5
+            ['top', '-l', '2', '-n', '0', '-s', '1'],
+            capture_output=True, text=True, timeout=10
         )
-        for line in result.stdout.split('\n'):
+        # top -l 2 gives two samples - use the second one for accurate reading
+        lines = result.stdout.split('\n')
+        for line in reversed(lines):  # Get the last (second) CPU usage line
             if 'CPU usage' in line:
                 # "CPU usage: 10.0% user, 5.0% sys, 85.0% idle"
-                match = re.search(r'(\d+\.?\d*)% idle', line)
-                if match:
-                    idle_pct = float(match.group(1))
-                    # Return as (idle, total) to match Linux interface
-                    return int(idle_pct * 100), 10000
-        return 0, 1
+                user_match = re.search(r'(\d+\.?\d*)% user', line)
+                sys_match = re.search(r'(\d+\.?\d*)% sys', line)
+                if user_match and sys_match:
+                    cpu_pct = float(user_match.group(1)) + float(sys_match.group(1))
+                    return cpu_pct, -1  # -1 signals direct percentage mode
+                break
+        return 0, -1
     except:
-        return 0, 1
+        return 0, -1
 
 
 def _macos_get_memory_info():
@@ -243,7 +251,11 @@ def _macos_get_swap_info():
 # --- Windows implementations ---
 
 def _windows_get_cpu_usage():
-    """Get CPU usage on Windows using wmic."""
+    """Get CPU usage on Windows using wmic.
+    
+    Returns (cpu_percent, -1) to signal direct percentage mode.
+    The -1 as second value tells collect_sample to use the first value directly.
+    """
     try:
         result = subprocess.run(
             ['wmic', 'cpu', 'get', 'loadpercentage'],
@@ -252,11 +264,10 @@ def _windows_get_cpu_usage():
         lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         if len(lines) >= 2 and lines[1].isdigit():
             cpu_pct = int(lines[1])
-            idle_pct = 100 - cpu_pct
-            return int(idle_pct * 100), 10000
-        return 0, 1
+            return cpu_pct, -1  # -1 signals direct percentage mode
+        return 0, -1
     except:
-        return 0, 1
+        return 0, -1
 
 
 def _windows_get_memory_info():
@@ -866,11 +877,24 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
     # CPU (calculate delta)
     cpu_idle, cpu_total = get_cpu_usage()
     cpu_percent = 0
-    if prev_cpu:
-        idle_delta = cpu_idle - prev_cpu[0]
-        total_delta = cpu_total - prev_cpu[1]
-        if total_delta > 0:
-            cpu_percent = round(100 * (1 - idle_delta / total_delta), 2)
+    # CPU: handle both delta-based (Linux) and direct percentage (macOS/Windows)
+    cpu_val1, cpu_val2 = get_cpu_usage()
+    cpu_percent = 0
+    
+    if cpu_val2 == -1:
+        # Direct percentage mode (macOS/Windows): cpu_val1 is the CPU percentage
+        cpu_percent = round(cpu_val1, 2)
+        # Store as tuple for consistency, but we don't use prev_cpu in this mode
+        prev_cpu_new = (cpu_val1, cpu_val2)
+    else:
+        # Delta-based mode (Linux): cpu_val1=idle, cpu_val2=total (cumulative)
+        cpu_idle, cpu_total = cpu_val1, cpu_val2
+        if prev_cpu and prev_cpu[1] != -1:
+            idle_delta = cpu_idle - prev_cpu[0]
+            total_delta = cpu_total - prev_cpu[1]
+            if total_delta > 0:
+                cpu_percent = round(100 * (1 - idle_delta / total_delta), 2)
+        prev_cpu_new = (cpu_idle, cpu_total)
     
     # Detailed CPU (iowait, steal)
     cpu_detailed = get_cpu_detailed()
@@ -957,7 +981,7 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
     }
     
     return (sample, 
-            (cpu_idle, cpu_total), 
+            prev_cpu_new, 
             cpu_detailed,
             disk_io | {'timestamp': timestamp}, 
             net_io | {'timestamp': timestamp},

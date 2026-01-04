@@ -2872,7 +2872,7 @@ def export_csv_files(data, output_dir):
     # CSV export
     csv_path = os.path.join(output_dir, 'telemetry-samples.csv')
     try:
-        with open(csv_path, 'w') as f:
+        with open(csv_path, 'w', encoding='utf-8') as f:
             headers = ['timestamp', 'elapsed_sec', 'cpu_percent', 'memory_percent', 
                       'memory_used_mb', 'load_1m', 'disk_read_rate', 'disk_write_rate',
                       'net_rx_rate', 'net_tx_rate', 'iowait_percent', 'steal_percent']
@@ -2934,7 +2934,7 @@ def export_csv_files(data, output_dir):
             },
         }
         
-        with open(json_path, 'w') as f:
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(summary, f, indent=2)
         print(f"✅ Summary JSON exported to {json_path}")
     except Exception as e:
@@ -2981,7 +2981,7 @@ def main():
     # Write to GITHUB_STEP_SUMMARY if available
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary_file:
-        with open(summary_file, 'a') as f:
+        with open(summary_file, 'a', encoding='utf-8') as f:
             f.write(report)
         print("✅ Report written to GitHub Step Summary")
     
@@ -2990,28 +2990,28 @@ def main():
     report_path = os.path.join(output_dir, 'telemetry-report.md')
     
     try:
-        with open(report_path, 'w') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write(report)
         print(f"✅ Markdown report saved to {report_path}")
     except:
-        with open('telemetry-report.md', 'w') as f:
+        with open('telemetry-report.md', 'w', encoding='utf-8') as f:
             f.write(report)
     
     # Generate and save HTML dashboard
     html_dashboard = generate_html_dashboard(data)
     html_path = os.path.join(output_dir, 'telemetry-dashboard.html')
     try:
-        with open(html_path, 'w') as f:
+        with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_dashboard)
         print(f"✅ HTML dashboard saved to {html_path}")
     except:
-        with open('telemetry-dashboard.html', 'w') as f:
+        with open('telemetry-dashboard.html', 'w', encoding='utf-8') as f:
             f.write(html_dashboard)
     
     # Save raw data as JSON
     try:
         json_path = os.path.join(output_dir, 'telemetry-raw.json')
-        with open(json_path, 'w') as f:
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         print(f"✅ Raw data saved to {json_path}")
     except:
