@@ -1,0 +1,145 @@
+name: Test Self-Hosted Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Self-hosted runner label'
+        required: true
+        default: 'self-hosted-macos'
+        type: choice
+        options:
+          - self-hosted-macos
+          - self-hosted-windows
+          - self-hosted-linux
+
+jobs:
+  test-runner:
+    runs-on: ${{ inputs.runner }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.2.2
+
+    - name: Runner Telemetry Action
+      uses: tsviz/actions-runner-telemetry@v1
+
+    - name: Test runner environment
+      run: |
+        echo "Running on: $(hostname)"
+        echo "OS: $(uname -s)"
+        echo "Architecture: $(uname -m)"
+        echo "Working directory: $(pwd)"
+        echo "Node.js version: $(node --version)"
+        echo "npm version: $(npm --version)"
+
+    - name: CPU Stress Test - Multi-core Load
+      run: |
+        echo "Starting CPU stress test on all cores..."
+        
+        # Get number of CPU cores
+        CORES=$(sysctl -n hw.ncpu)
+        echo "Detected $CORES CPU cores"
+        
+        # Run CPU intensive tasks on all cores for 2 minutes
+        for i in $(seq 1 $CORES); do
+          yes > /dev/null &
+        done
+        
+        # Let it run for 2 minutes
+        sleep 120
+        
+        # Kill all background yes processes
+        killall yes
+        echo "CPU stress test completed"
+
+    - name: Memory Stress Test - RAM Consumption
+      run: |
+        echo "Starting memory stress test..."
+        
+        # Create large memory allocation (1GB)
+        python3 -c "
+        import time
+        print('Allocating 1GB of memory...')
+        data = []
+        for i in range(100):
+            # Allocate 10MB chunks
+            chunk = bytearray(10 * 1024 * 1024)
+            data.append(chunk)
+            if i % 10 == 0:
+                print(f'Allocated {(i+1) * 10}MB')
+        
+        print('Holding memory for 60 seconds...')
+        time.sleep(60)
+        print('Memory test completed')
+        "
+
+    - name: Disk I/O Stress Test - Heavy Read/Write
+      run: |
+        echo "Starting intensive disk I/O operations..."
+        
+        # Create test directory
+        mkdir -p stress_io_test
+        cd stress_io_test
+        
+        echo "Writing large files with dd..."
+        # Write 10 files of 100MB each
+        for i in {1..10}; do
+          dd if=/dev/zero of=testfile_${i}.bin bs=1m count=100 &
+        done
+        wait
+        
+        echo "Reading files back..."
+        # Read all files multiple times
+        for round in {1..5}; do
+          echo "Read round $round"
+          for file in *.bin; do
+            dd if=$file of=/dev/null bs=1m &
+          done
+          wait
+        done
+        
+        echo "Performing random I/O operations..."
+        # Random read/write operations
+        for i in {1..100}; do
+          dd if=/dev/random of=random_${i}.bin bs=1k count=1024 2>/dev/null &
+        done
+        wait
+        
+        # Cleanup
+        cd ..
+        rm -rf stress_io_test
+        echo "Disk I/O stress test completed"
+
+    - name: Network Stress Test - Heavy Downloads
+      run: |
+        echo "Starting network stress test..."
+        
+        # Download multiple large files simultaneously
+        mkdir -p network_stress
+        cd network_stress
+        
+        # Array of URLs for downloading
+        urls=(
+          "https://github.com/git/git/archive/refs/tags/v2.43.0.tar.gz"
+          "https://nodejs.org/dist/v20.10.0/node-v20.10.0.tar.gz"
+          "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz"
+          "https://github.com/actions/runner/releases/download/v2.312.0/actions-runner-osx-x64-2.312.0.tar.gz"
+        )
+        
+        echo "Downloading files in parallel..."
+        for i in "${!urls[@]}"; do
+          curl -L "${urls[$i]}" -o "download_${i}.tar.gz" &
+        done
+        wait
+        
+        echo "Re-downloading files to stress network..."
+        for i in "${!urls[@]}"; do
+          curl -L "${urls[$i]}" -o "download_${i}_2.tar.gz" &
+        done
+        wait
+        
+        # Cleanup
+        cd ..
+        rm -rf network_stress
+        echo "Network stress test completed"
