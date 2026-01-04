@@ -257,24 +257,26 @@ def _windows_get_cpu_usage():
     The -1 as second value tells collect_sample to use the first value directly.
     """
     try:
-        # Try typeperf first (faster, no PowerShell overhead)
+        # Use typeperf (fast, no PowerShell overhead)
         result = subprocess.run(
             ['typeperf', '-sc', '1', '\\Processor(_Total)\\% Processor Time'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
-        # Parse typeperf output - second line has the value
-        lines = result.stdout.strip().split('\n')
-        for line in lines:
-            if ',' in line and 'PDH-CSV' not in line and 'Processor' not in line:
-                # Format: "timestamp","value"
-                parts = line.split(',')
-                if len(parts) >= 2:
-                    val = parts[1].strip().strip('"')
-                    try:
-                        cpu_pct = float(val)
-                        return round(cpu_pct, 2), -1
-                    except ValueError:
-                        pass
+        # typeperf output format:
+        # Line 1 (header): "(PDH-CSV 4.0)","\\COMPUTER\counter"
+        # Line 2 (data): "01/04/2026 16:05:45.123","15.234567"
+        # Parse second line (skip empty lines)
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        if len(lines) >= 2:
+            data_line = lines[1]  # Second line is data
+            parts = data_line.split(',')
+            if len(parts) >= 2:
+                val = parts[1].strip().strip('"')
+                try:
+                    cpu_pct = float(val)
+                    return round(cpu_pct, 2), -1
+                except ValueError:
+                    pass
         return 0, -1
     except Exception:
         return 0, -1
@@ -286,22 +288,23 @@ def _windows_get_memory_info():
         # Use typeperf for memory (fast, no PowerShell overhead)
         result = subprocess.run(
             ['typeperf', '-sc', '1', '\\Memory\\Available MBytes', '\\Memory\\% Committed Bytes In Use'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
         
-        lines = result.stdout.strip().split('\n')
+        # Parse second line (data line)
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         available_mb = 0
         percent_used = 0
         
-        for line in lines:
-            if ',' in line and 'PDH-CSV' not in line and 'Memory' not in line:
-                parts = line.split(',')
-                if len(parts) >= 3:
-                    try:
-                        available_mb = int(float(parts[1].strip().strip('"')))
-                        percent_used = float(parts[2].strip().strip('"'))
-                    except (ValueError, IndexError):
-                        pass
+        if len(lines) >= 2:
+            data_line = lines[1]
+            parts = data_line.split(',')
+            if len(parts) >= 3:
+                try:
+                    available_mb = int(float(parts[1].strip().strip('"')))
+                    percent_used = float(parts[2].strip().strip('"'))
+                except (ValueError, IndexError):
+                    pass
         
         # Estimate total from available and percent
         if percent_used > 0 and percent_used < 100:
@@ -358,18 +361,18 @@ def _windows_get_load_average():
     try:
         result = subprocess.run(
             ['typeperf', '-sc', '1', '\\System\\Processor Queue Length'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
-        lines = result.stdout.strip().split('\n')
-        for line in lines:
-            if ',' in line and 'PDH-CSV' not in line and 'System' not in line:
-                parts = line.split(',')
-                if len(parts) >= 2:
-                    try:
-                        queue_len = float(parts[1].strip().strip('"'))
-                        return {'load_1m': queue_len, 'load_5m': queue_len, 'load_15m': queue_len, 'running_procs': 'N/A'}
-                    except ValueError:
-                        pass
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        if len(lines) >= 2:
+            data_line = lines[1]
+            parts = data_line.split(',')
+            if len(parts) >= 2:
+                try:
+                    queue_len = float(parts[1].strip().strip('"'))
+                    return {'load_1m': queue_len, 'load_5m': queue_len, 'load_15m': queue_len, 'running_procs': 'N/A'}
+                except ValueError:
+                    pass
         return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
     except Exception:
         return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
@@ -380,18 +383,18 @@ def _windows_get_cpu_detailed():
     try:
         result = subprocess.run(
             ['typeperf', '-sc', '1', '\\Processor(_Total)\\% Processor Time'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
-        lines = result.stdout.strip().split('\n')
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         cpu_pct = 0
-        for line in lines:
-            if ',' in line and 'PDH-CSV' not in line and 'Processor' not in line:
-                parts = line.split(',')
-                if len(parts) >= 2:
-                    try:
-                        cpu_pct = float(parts[1].strip().strip('"'))
-                    except ValueError:
-                        pass
+        if len(lines) >= 2:
+            data_line = lines[1]
+            parts = data_line.split(',')
+            if len(parts) >= 2:
+                try:
+                    cpu_pct = float(parts[1].strip().strip('"'))
+                except ValueError:
+                    pass
         
         user = int(cpu_pct * 100)
         idle = int((100 - cpu_pct) * 100)
@@ -416,18 +419,18 @@ def _windows_get_swap_info():
     try:
         result = subprocess.run(
             ['typeperf', '-sc', '1', '\\Paging File(_Total)\\% Usage'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
-        lines = result.stdout.strip().split('\n')
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         percent_used = 0
-        for line in lines:
-            if ',' in line and 'PDH-CSV' not in line and 'Paging' not in line:
-                parts = line.split(',')
-                if len(parts) >= 2:
-                    try:
-                        percent_used = float(parts[1].strip().strip('"'))
-                    except ValueError:
-                        pass
+        if len(lines) >= 2:
+            data_line = lines[1]
+            parts = data_line.split(',')
+            if len(parts) >= 2:
+                try:
+                    percent_used = float(parts[1].strip().strip('"'))
+                except ValueError:
+                    pass
         
         return {
             'total_mb': 0,  # typeperf doesn't give total easily
@@ -1036,6 +1039,19 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
 def start_collection():
     """Start collecting metrics."""
     print(f"📊 Starting telemetry collection (interval: {SAMPLE_INTERVAL}s)")
+    print(f"  Platform: {platform.system()}")
+    print(f"  Data file: {DATA_FILE}")
+    
+    # Test basic metric collection on Windows
+    if IS_WINDOWS:
+        print("  Testing Windows metric collection...")
+        try:
+            cpu_val, cpu_mode = get_cpu_usage()
+            print(f"    CPU test: {cpu_val}% (mode={cpu_mode})")
+            mem = get_memory_info()
+            print(f"    Memory test: {mem.get('percent', 0)}%")
+        except Exception as e:
+            print(f"    ⚠️  Metric test failed: {e}")
     
     # Initial metadata
     data = {
