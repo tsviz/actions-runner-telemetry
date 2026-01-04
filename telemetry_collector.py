@@ -1037,12 +1037,24 @@ def start_collection():
     print("    - cpu_count", flush=True)
     cpu_count = os.cpu_count() or 1
     
-    # On Windows, skip expensive initial snapshot calls - they can hang
-    # The real metrics will be collected in the sampling loop anyway
+    # On Windows, we use ctypes which is fast - get real memory info
+    # Only skip the expensive subprocess-based calls
     if IS_WINDOWS:
-        print("    - Using fast Windows defaults (metrics collected in loop)", flush=True)
-        memory = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
-        swap = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
+        print("    - memory (calling ctypes)...", flush=True)
+        try:
+            memory = get_memory_info()
+            print(f"    - memory done: total={memory.get('total_mb', 0)}MB, {memory.get('percent', 0)}%", flush=True)
+        except Exception as e:
+            print(f"    - memory error: {e}", flush=True)
+            memory = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
+        print("    - swap (calling ctypes)...", flush=True)
+        try:
+            swap = get_swap_info()
+            print(f"    - swap done: {swap.get('percent', 0)}%", flush=True)
+        except Exception as e:
+            print(f"    - swap error: {e}", flush=True)
+            swap = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
+        # These still use subprocess on Windows, skip them
         disk_space = {'total_gb': 0, 'used_gb': 0, 'percent': 0}
         file_descriptors = {'current': 0, 'max': 0}
         tcp_connections = {}
