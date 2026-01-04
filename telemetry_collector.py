@@ -13,6 +13,7 @@ import time
 import subprocess
 import platform
 import re
+import io
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +22,15 @@ PLATFORM = platform.system()  # 'Linux', 'Darwin' (macOS), or 'Windows'
 IS_LINUX = PLATFORM == 'Linux'
 IS_MACOS = PLATFORM == 'Darwin'
 IS_WINDOWS = PLATFORM == 'Windows'
+
+# Fix Windows console encoding for emoji/unicode output
+if IS_WINDOWS:
+    # Reconfigure stdout/stderr to use UTF-8 with error replacement
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Fallback: continue with default encoding
 
 # Platform-specific data file path
 if IS_WINDOWS:

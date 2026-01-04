@@ -2,7 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn, spawnSync } = require('child_process');
+
+// Cross-platform temp directory
+const TEMP_DIR = os.tmpdir();
 
 function log(msg) { process.stdout.write(`${msg}\n`); }
 function setEnv(k, v) { process.env[k] = v; }
@@ -26,7 +30,7 @@ function runPy(script, args = []) {
 }
 
 function stopCollectorIfRunning() {
-  const pidFile = '/tmp/telemetry_collector.pid';
+  const pidFile = path.join(TEMP_DIR, 'telemetry_collector.pid');
   if (fs.existsSync(pidFile)) {
     const pid = Number(fs.readFileSync(pidFile, 'utf8'));
     try {
@@ -49,10 +53,11 @@ function stopCollectorIfRunning() {
   const dataFile = path.join(workspace, '.telemetry_data.json');
   setEnv('TELEMETRY_DATA_FILE', dataFile);
   setEnv('GITHUB_WORKSPACE', workspace);
-  const fallbackDataFile = '/tmp/telemetry_data.json';
+  const fallbackDataFile = path.join(TEMP_DIR, 'telemetry_data.json');
+  const pidFile = path.join(TEMP_DIR, 'telemetry_collector.pid');
 
   // If nothing was started, no-op
-  if (!fs.existsSync('/tmp/telemetry_collector.pid') && !fs.existsSync(dataFile)) {
+  if (!fs.existsSync(pidFile) && !fs.existsSync(dataFile)) {
     if (fs.existsSync(fallbackDataFile)) {
       setEnv('TELEMETRY_DATA_FILE', fallbackDataFile);
       log(`🔎 Using fallback data file at ${fallbackDataFile}`);

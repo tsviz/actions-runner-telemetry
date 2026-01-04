@@ -3,7 +3,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn, spawnSync } = require('child_process');
+
+// Cross-platform temp directory
+const TEMP_DIR = os.tmpdir();
 
 function appendOutput(name, value) {
   const out = process.env.GITHUB_OUTPUT;
@@ -60,18 +64,19 @@ function startCollector(interval) {
     return;
   }
   const py = actionPath('telemetry_collector.py');
-  const logPath = '/tmp/telemetry_collector.log';
+  const logPath = path.join(TEMP_DIR, 'telemetry_collector.log');
+  const pidPath = path.join(TEMP_DIR, 'telemetry_collector.pid');
   const child = spawn(pyCmd, [py, 'start'], {
     detached: true,
     stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
   });
-  fs.writeFileSync('/tmp/telemetry_collector.pid', String(child.pid));
+  fs.writeFileSync(pidPath, String(child.pid));
   child.unref();
   log(`✅ Telemetry collector started (PID: ${child.pid})`);
 }
 
 function stopCollectorIfRunning() {
-  const pidFile = '/tmp/telemetry_collector.pid';
+  const pidFile = path.join(TEMP_DIR, 'telemetry_collector.pid');
   if (fs.existsSync(pidFile)) {
     const pid = Number(fs.readFileSync(pidFile, 'utf8'));
     try {

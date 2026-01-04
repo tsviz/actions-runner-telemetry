@@ -10,11 +10,21 @@ to maximize value and optimize costs.
 
 import os
 import sys
+import io
 import json
 import math
 import logging
+import platform
 from datetime import datetime
 from pathlib import Path
+
+# Fix Windows console encoding for emoji/unicode output
+if platform.system() == 'Windows':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Fallback: continue with default encoding
 
 # Configure logging for debug visibility
 logging.basicConfig(
