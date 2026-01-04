@@ -1061,18 +1061,48 @@ def start_collection():
     print("  Building initial snapshot...", flush=True)
     print("    - cpu_count", flush=True)
     cpu_count = os.cpu_count() or 1
-    print("    - memory", flush=True)
-    memory = safe_call(get_memory_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0})
-    print("    - swap", flush=True)
-    swap = safe_call(get_swap_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0})
-    print("    - disk_space", flush=True)
-    disk_space = safe_call(get_disk_space, default={'total_gb': 0, 'used_gb': 0, 'percent': 0})
-    print("    - file_descriptors", flush=True)
-    file_descriptors = safe_call(get_file_descriptors, default={'current': 0, 'max': 0})
-    print("    - tcp_connections", flush=True)
-    tcp_connections = safe_call(get_tcp_connections, default={})
-    print("    - processes", flush=True)
-    processes = safe_call(get_top_processes, 10, default={'by_cpu': [], 'by_mem': []})
+    print("    - memory (calling)...", flush=True)
+    try:
+        memory = get_memory_info()
+        print(f"    - memory done: {memory.get('percent', 0)}%", flush=True)
+    except Exception as e:
+        print(f"    - memory error: {e}", flush=True)
+        memory = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
+    print("    - swap (calling)...", flush=True)
+    try:
+        swap = get_swap_info()
+        print(f"    - swap done: {swap.get('percent', 0)}%", flush=True)
+    except Exception as e:
+        print(f"    - swap error: {e}", flush=True)
+        swap = {'total_mb': 0, 'used_mb': 0, 'percent': 0}
+    print("    - disk_space (calling)...", flush=True)
+    try:
+        disk_space = get_disk_space()
+        print(f"    - disk_space done: {disk_space.get('percent', 0)}%", flush=True)
+    except Exception as e:
+        print(f"    - disk_space error: {e}", flush=True)
+        disk_space = {'total_gb': 0, 'used_gb': 0, 'percent': 0}
+    print("    - file_descriptors (calling)...", flush=True)
+    try:
+        file_descriptors = get_file_descriptors()
+        print(f"    - file_descriptors done", flush=True)
+    except Exception as e:
+        print(f"    - file_descriptors error: {e}", flush=True)
+        file_descriptors = {'current': 0, 'max': 0}
+    print("    - tcp_connections (calling)...", flush=True)
+    try:
+        tcp_connections = get_tcp_connections()
+        print(f"    - tcp_connections done", flush=True)
+    except Exception as e:
+        print(f"    - tcp_connections error: {e}", flush=True)
+        tcp_connections = {}
+    print("    - processes (calling)...", flush=True)
+    try:
+        processes = get_top_processes(10)
+        print(f"    - processes done", flush=True)
+    except Exception as e:
+        print(f"    - processes error: {e}", flush=True)
+        processes = {'by_cpu': [], 'by_mem': []}
     print("    Done building snapshot", flush=True)
     
     initial_snapshot = {
