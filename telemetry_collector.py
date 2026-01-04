@@ -253,33 +253,30 @@ def _macos_get_swap_info():
 # so we use direct Windows API calls via ctypes instead.
 
 import ctypes
-if IS_WINDOWS:
-    from ctypes import wintypes
 
-    # Define MEMORYSTATUSEX structure
-    class MEMORYSTATUSEX(ctypes.Structure):
-        _fields_ = [
-            ('dwLength', wintypes.DWORD),
-            ('dwMemoryLoad', wintypes.DWORD),
-            ('ullTotalPhys', ctypes.c_uint64),
-            ('ullAvailPhys', ctypes.c_uint64),
-            ('ullTotalPageFile', ctypes.c_uint64),
-            ('ullAvailPageFile', ctypes.c_uint64),
-            ('ullTotalVirtual', ctypes.c_uint64),
-            ('ullAvailVirtual', ctypes.c_uint64),
-            ('ullAvailExtendedVirtual', ctypes.c_uint64),
-        ]
+# Define Windows structures - only used on Windows but defined always to avoid NameError
+class MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ('dwLength', ctypes.c_ulong),
+        ('dwMemoryLoad', ctypes.c_ulong),
+        ('ullTotalPhys', ctypes.c_ulonglong),
+        ('ullAvailPhys', ctypes.c_ulonglong),
+        ('ullTotalPageFile', ctypes.c_ulonglong),
+        ('ullAvailPageFile', ctypes.c_ulonglong),
+        ('ullTotalVirtual', ctypes.c_ulonglong),
+        ('ullAvailVirtual', ctypes.c_ulonglong),
+        ('ullAvailExtendedVirtual', ctypes.c_ulonglong),
+    ]
 
-    # Define FILETIME structure for CPU times
-    class FILETIME(ctypes.Structure):
-        _fields_ = [
-            ('dwLowDateTime', wintypes.DWORD),
-            ('dwHighDateTime', wintypes.DWORD),
-        ]
+class FILETIME(ctypes.Structure):
+    _fields_ = [
+        ('dwLowDateTime', ctypes.c_ulong),
+        ('dwHighDateTime', ctypes.c_ulong),
+    ]
 
-    def _filetime_to_int(ft):
-        """Convert FILETIME to 64-bit integer (100-nanosecond intervals)."""
-        return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+def _filetime_to_int(ft):
+    """Convert FILETIME to 64-bit integer (100-nanosecond intervals)."""
+    return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
 
 
 def _windows_get_cpu_usage():
