@@ -257,73 +257,54 @@ def _windows_get_cpu_usage():
     The -1 as second value tells collect_sample to use the first value directly.
     """
     try:
-        # Use typeperf (fast, no PowerShell overhead)
+        # Use PowerShell Get-Counter which works better in background processes
         result = subprocess.run(
-            ['typeperf', '-sc', '1', '\\Processor(_Total)\\% Processor Time'],
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-Counter '\\Processor(_Total)\\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
             capture_output=True, text=True, timeout=10
         )
-        # typeperf output format:
-        # Line 1 (header): "(PDH-CSV 4.0)","\\COMPUTER\counter"
-        # Line 2 (data): "01/04/2026 16:05:45.123","15.234567"
-        # Parse second line (skip empty lines)
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-        if len(lines) >= 2:
-            data_line = lines[1]  # Second line is data
-            parts = data_line.split(',')
-            if len(parts) >= 2:
-                val = parts[1].strip().strip('"')
-                try:
-                    cpu_pct = float(val)
-                    return round(cpu_pct, 2), -1
-                except ValueError:
-                    pass
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                cpu_pct = float(result.stdout.strip().replace(',', '.'))
+                return round(cpu_pct, 2), -1
+            except ValueError:
+                pass
         return 0, -1
     except Exception:
         return 0, -1
 
 
 def _windows_get_memory_info():
-    """Get memory info on Windows using typeperf."""
+    """Get memory info on Windows using PowerShell."""
     try:
-        # Use typeperf for memory (fast, no PowerShell overhead)
+        # Use PowerShell to get memory info
         result = subprocess.run(
-            ['typeperf', '-sc', '1', '\\Memory\\Available MBytes', '\\Memory\\% Committed Bytes In Use'],
+            ['powershell', '-NoProfile', '-Command',
+             "$os = Get-CimInstance Win32_OperatingSystem; "
+             "$total = [math]::Round($os.TotalVisibleMemorySize / 1024); "
+             "$free = [math]::Round($os.FreePhysicalMemory / 1024); "
+             "$used = $total - $free; "
+             "$pct = [math]::Round(($used / $total) * 100, 2); "
+             "\"$total,$used,$free,$pct\""],
             capture_output=True, text=True, timeout=10
         )
         
-        # Parse second line (data line)
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-        available_mb = 0
-        percent_used = 0
-        
-        if len(lines) >= 2:
-            data_line = lines[1]
-            parts = data_line.split(',')
-            if len(parts) >= 3:
-                try:
-                    available_mb = int(float(parts[1].strip().strip('"')))
-                    percent_used = float(parts[2].strip().strip('"'))
-                except (ValueError, IndexError):
-                    pass
-        
-        # Estimate total from available and percent
-        if percent_used > 0 and percent_used < 100:
-            # This is commit bytes, not physical memory - rough estimate
-            total_mb = int(available_mb / (1 - percent_used / 100)) if percent_used < 100 else available_mb
-            used_mb = total_mb - available_mb
-        else:
-            total_mb = available_mb
-            used_mb = 0
-            percent_used = 0
-        
-        return {
-            'total_mb': total_mb,
-            'used_mb': used_mb,
-            'available_mb': available_mb,
-            'buffers_mb': 0,
-            'cached_mb': 0,
-            'percent': round(percent_used, 2)
-        }
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split(',')
+            if len(parts) >= 4:
+                total_mb = int(parts[0])
+                used_mb = int(parts[1])
+                available_mb = int(parts[2])
+                percent_used = float(parts[3].replace(',', '.'))
+                return {
+                    'total_mb': total_mb,
+                    'used_mb': used_mb,
+                    'available_mb': available_mb,
+                    'buffers_mb': 0,
+                    'cached_mb': 0,
+                    'percent': round(percent_used, 2)
+                }
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
     except Exception:
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
 
@@ -360,41 +341,35 @@ def _windows_get_load_average():
     """Windows doesn't have load average concept - use CPU queue length as proxy."""
     try:
         result = subprocess.run(
-            ['typeperf', '-sc', '1', '\\System\\Processor Queue Length'],
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-Counter '\\System\\Processor Queue Length' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
             capture_output=True, text=True, timeout=10
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-        if len(lines) >= 2:
-            data_line = lines[1]
-            parts = data_line.split(',')
-            if len(parts) >= 2:
-                try:
-                    queue_len = float(parts[1].strip().strip('"'))
-                    return {'load_1m': queue_len, 'load_5m': queue_len, 'load_15m': queue_len, 'running_procs': 'N/A'}
-                except ValueError:
-                    pass
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                queue_len = float(result.stdout.strip().replace(',', '.'))
+                return {'load_1m': queue_len, 'load_5m': queue_len, 'load_15m': queue_len, 'running_procs': 'N/A'}
+            except ValueError:
+                pass
         return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
     except Exception:
         return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
 
 
 def _windows_get_cpu_detailed():
-    """Get detailed CPU metrics on Windows using typeperf."""
+    """Get detailed CPU metrics on Windows using PowerShell."""
     try:
         result = subprocess.run(
-            ['typeperf', '-sc', '1', '\\Processor(_Total)\\% Processor Time'],
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-Counter '\\Processor(_Total)\\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
             capture_output=True, text=True, timeout=10
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         cpu_pct = 0
-        if len(lines) >= 2:
-            data_line = lines[1]
-            parts = data_line.split(',')
-            if len(parts) >= 2:
-                try:
-                    cpu_pct = float(parts[1].strip().strip('"'))
-                except ValueError:
-                    pass
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                cpu_pct = float(result.stdout.strip().replace(',', '.'))
+            except ValueError:
+                pass
         
         user = int(cpu_pct * 100)
         idle = int((100 - cpu_pct) * 100)
@@ -415,25 +390,22 @@ def _windows_get_cpu_detailed():
 
 
 def _windows_get_swap_info():
-    """Get swap/page file info on Windows using typeperf."""
+    """Get swap/page file info on Windows using PowerShell."""
     try:
         result = subprocess.run(
-            ['typeperf', '-sc', '1', '\\Paging File(_Total)\\% Usage'],
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-Counter '\\Paging File(_Total)\\% Usage' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
             capture_output=True, text=True, timeout=10
         )
-        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
         percent_used = 0
-        if len(lines) >= 2:
-            data_line = lines[1]
-            parts = data_line.split(',')
-            if len(parts) >= 2:
-                try:
-                    percent_used = float(parts[1].strip().strip('"'))
-                except ValueError:
-                    pass
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                percent_used = float(result.stdout.strip().replace(',', '.'))
+            except ValueError:
+                pass
         
         return {
-            'total_mb': 0,  # typeperf doesn't give total easily
+            'total_mb': 0,
             'used_mb': 0,
             'free_mb': 0,
             'percent': round(percent_used, 2)
