@@ -1058,14 +1058,31 @@ def start_collection():
             print(f"  ⚠️  {func.__name__} failed: {e}", flush=True)
             return default
     
+    print("  Building initial snapshot...", flush=True)
+    print("    - cpu_count", flush=True)
+    cpu_count = os.cpu_count() or 1
+    print("    - memory", flush=True)
+    memory = safe_call(get_memory_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0})
+    print("    - swap", flush=True)
+    swap = safe_call(get_swap_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0})
+    print("    - disk_space", flush=True)
+    disk_space = safe_call(get_disk_space, default={'total_gb': 0, 'used_gb': 0, 'percent': 0})
+    print("    - file_descriptors", flush=True)
+    file_descriptors = safe_call(get_file_descriptors, default={'current': 0, 'max': 0})
+    print("    - tcp_connections", flush=True)
+    tcp_connections = safe_call(get_tcp_connections, default={})
+    print("    - processes", flush=True)
+    processes = safe_call(get_top_processes, 10, default={'by_cpu': [], 'by_mem': []})
+    print("    Done building snapshot", flush=True)
+    
     initial_snapshot = {
-        'cpu_count': os.cpu_count() or 1,
-        'memory': safe_call(get_memory_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0}),
-        'swap': safe_call(get_swap_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0}),
-        'disk_space': safe_call(get_disk_space, default={'total_gb': 0, 'used_gb': 0, 'percent': 0}),
-        'file_descriptors': safe_call(get_file_descriptors, default={'current': 0, 'max': 0}),
-        'tcp_connections': safe_call(get_tcp_connections, default={}),
-        'processes': safe_call(get_top_processes, 10, default={'by_cpu': [], 'by_mem': []})
+        'cpu_count': cpu_count,
+        'memory': memory,
+        'swap': swap,
+        'disk_space': disk_space,
+        'file_descriptors': file_descriptors,
+        'tcp_connections': tcp_connections,
+        'processes': processes
     }
     
     # Initial metadata
