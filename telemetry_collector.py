@@ -248,168 +248,167 @@ def _macos_get_swap_info():
         return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
 
 
-# --- Windows implementations ---
+# --- Windows implementations using ctypes (no subprocess) ---
+# Subprocess calls hang in detached background processes on Windows,
+# so we use direct Windows API calls via ctypes instead.
+
+import ctypes
+if IS_WINDOWS:
+    from ctypes import wintypes
+
+    # Define MEMORYSTATUSEX structure
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ('dwLength', wintypes.DWORD),
+            ('dwMemoryLoad', wintypes.DWORD),
+            ('ullTotalPhys', ctypes.c_uint64),
+            ('ullAvailPhys', ctypes.c_uint64),
+            ('ullTotalPageFile', ctypes.c_uint64),
+            ('ullAvailPageFile', ctypes.c_uint64),
+            ('ullTotalVirtual', ctypes.c_uint64),
+            ('ullAvailVirtual', ctypes.c_uint64),
+            ('ullAvailExtendedVirtual', ctypes.c_uint64),
+        ]
+
+    # Define FILETIME structure for CPU times
+    class FILETIME(ctypes.Structure):
+        _fields_ = [
+            ('dwLowDateTime', wintypes.DWORD),
+            ('dwHighDateTime', wintypes.DWORD),
+        ]
+
+    def _filetime_to_int(ft):
+        """Convert FILETIME to 64-bit integer (100-nanosecond intervals)."""
+        return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+
 
 def _windows_get_cpu_usage():
-    """Get CPU usage on Windows.
+    """Get CPU usage on Windows using GetSystemTimes API.
     
-    Returns (cpu_percent, -1) to signal direct percentage mode.
-    The -1 as second value tells collect_sample to use the first value directly.
+    Returns (idle_time, total_time) for delta calculation.
     """
     try:
-        # Use PowerShell Get-Counter which works better in background processes
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command',
-             "(Get-Counter '\\Processor(_Total)\\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                cpu_pct = float(result.stdout.strip().replace(',', '.'))
-                return round(cpu_pct, 2), -1
-            except ValueError:
-                pass
-        return 0, -1
+        kernel32 = ctypes.windll.kernel32
+        idle_time = FILETIME()
+        kernel_time = FILETIME()
+        user_time = FILETIME()
+        
+        if kernel32.GetSystemTimes(
+            ctypes.byref(idle_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time)
+        ):
+            idle = _filetime_to_int(idle_time)
+            kernel = _filetime_to_int(kernel_time)
+            user = _filetime_to_int(user_time)
+            # kernel_time includes idle_time
+            total = kernel + user
+            return idle, total
+        return 0, 1
     except Exception:
-        return 0, -1
+        return 0, 1
 
 
 def _windows_get_memory_info():
-    """Get memory info on Windows using PowerShell."""
+    """Get memory info on Windows using GlobalMemoryStatusEx API."""
     try:
-        # Use PowerShell to get memory info
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command',
-             "$os = Get-CimInstance Win32_OperatingSystem; "
-             "$total = [math]::Round($os.TotalVisibleMemorySize / 1024); "
-             "$free = [math]::Round($os.FreePhysicalMemory / 1024); "
-             "$used = $total - $free; "
-             "$pct = [math]::Round(($used / $total) * 100, 2); "
-             "\"$total,$used,$free,$pct\""],
-            capture_output=True, text=True, timeout=10
-        )
+        kernel32 = ctypes.windll.kernel32
+        mem_status = MEMORYSTATUSEX()
+        mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
         
-        if result.returncode == 0 and result.stdout.strip():
-            parts = result.stdout.strip().split(',')
-            if len(parts) >= 4:
-                total_mb = int(parts[0])
-                used_mb = int(parts[1])
-                available_mb = int(parts[2])
-                percent_used = float(parts[3].replace(',', '.'))
-                return {
-                    'total_mb': total_mb,
-                    'used_mb': used_mb,
-                    'available_mb': available_mb,
-                    'buffers_mb': 0,
-                    'cached_mb': 0,
-                    'percent': round(percent_used, 2)
-                }
+        if kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+            total_mb = mem_status.ullTotalPhys // (1024 * 1024)
+            avail_mb = mem_status.ullAvailPhys // (1024 * 1024)
+            used_mb = total_mb - avail_mb
+            percent = mem_status.dwMemoryLoad  # Already calculated by Windows
+            
+            return {
+                'total_mb': total_mb,
+                'used_mb': used_mb,
+                'available_mb': avail_mb,
+                'buffers_mb': 0,
+                'cached_mb': 0,
+                'percent': percent
+            }
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
     except Exception:
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
 
 
 def _windows_get_disk_io():
-    """Get disk I/O on Windows - limited support."""
-    # Windows doesn't easily expose cumulative I/O via command line
+    """Get disk I/O on Windows - limited support without subprocess."""
+    # Would require complex WMI or performance counter API calls
     return {'read_bytes': 0, 'write_bytes': 0}
 
 
 def _windows_get_network_io():
-    """Get network I/O on Windows using netstat."""
-    try:
-        result = subprocess.run(
-            ['netstat', '-e'],
-            capture_output=True, text=True, timeout=10, shell=True
-        )
-        lines = result.stdout.strip().split('\n')
-        
-        for line in lines:
-            if 'Bytes' in line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    rx = int(parts[1])
-                    tx = int(parts[2])
-                    return {'rx_bytes': rx, 'tx_bytes': tx}
-        
-        return {'rx_bytes': 0, 'tx_bytes': 0}
-    except:
-        return {'rx_bytes': 0, 'tx_bytes': 0}
+    """Get network I/O on Windows - limited support without subprocess."""
+    # Would require GetIfTable or GetAdaptersInfo API calls
+    return {'rx_bytes': 0, 'tx_bytes': 0}
 
 
 def _windows_get_load_average():
-    """Windows doesn't have load average concept - use CPU queue length as proxy."""
-    try:
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command',
-             "(Get-Counter '\\System\\Processor Queue Length' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                queue_len = float(result.stdout.strip().replace(',', '.'))
-                return {'load_1m': queue_len, 'load_5m': queue_len, 'load_15m': queue_len, 'running_procs': 'N/A'}
-            except ValueError:
-                pass
-        return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
-    except Exception:
-        return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
+    """Windows doesn't have load average - return zeros."""
+    # Could use GetSystemTimes for a rough estimate but not equivalent
+    return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
 
 
 def _windows_get_cpu_detailed():
-    """Get detailed CPU metrics on Windows using PowerShell."""
+    """Get detailed CPU metrics on Windows using GetSystemTimes."""
     try:
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command',
-             "(Get-Counter '\\Processor(_Total)\\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
-            capture_output=True, text=True, timeout=10
-        )
-        cpu_pct = 0
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                cpu_pct = float(result.stdout.strip().replace(',', '.'))
-            except ValueError:
-                pass
+        kernel32 = ctypes.windll.kernel32
+        idle_time = FILETIME()
+        kernel_time = FILETIME()
+        user_time = FILETIME()
         
-        user = int(cpu_pct * 100)
-        idle = int((100 - cpu_pct) * 100)
-        
-        return {
-            'user': user,
-            'nice': 0,
-            'system': 0,
-            'idle': idle,
-            'iowait': 0,
-            'irq': 0,
-            'softirq': 0,
-            'steal': 0,
-            'total': 10000
-        }
+        if kernel32.GetSystemTimes(
+            ctypes.byref(idle_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time)
+        ):
+            idle = _filetime_to_int(idle_time)
+            kernel = _filetime_to_int(kernel_time)
+            user = _filetime_to_int(user_time)
+            # kernel includes idle, so system = kernel - idle
+            system = kernel - idle
+            total = kernel + user
+            
+            return {
+                'user': user,
+                'nice': 0,
+                'system': system,
+                'idle': idle,
+                'iowait': 0,
+                'irq': 0,
+                'softirq': 0,
+                'steal': 0,
+                'total': total
+            }
+        return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
     except Exception:
         return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
 
 
 def _windows_get_swap_info():
-    """Get swap/page file info on Windows using PowerShell."""
+    """Get swap/page file info on Windows using GlobalMemoryStatusEx API."""
     try:
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command',
-             "(Get-Counter '\\Paging File(_Total)\\% Usage' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue"],
-            capture_output=True, text=True, timeout=10
-        )
-        percent_used = 0
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                percent_used = float(result.stdout.strip().replace(',', '.'))
-            except ValueError:
-                pass
+        kernel32 = ctypes.windll.kernel32
+        mem_status = MEMORYSTATUSEX()
+        mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
         
-        return {
-            'total_mb': 0,
-            'used_mb': 0,
-            'free_mb': 0,
-            'percent': round(percent_used, 2)
-        }
+        if kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+            total_mb = mem_status.ullTotalPageFile // (1024 * 1024)
+            avail_mb = mem_status.ullAvailPageFile // (1024 * 1024)
+            used_mb = total_mb - avail_mb
+            percent = round((used_mb / total_mb) * 100, 2) if total_mb > 0 else 0
+            
+            return {
+                'total_mb': total_mb,
+                'used_mb': used_mb,
+                'free_mb': avail_mb,
+                'percent': percent
+            }
+        return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
     except Exception:
         return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
 
