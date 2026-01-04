@@ -694,26 +694,26 @@ def get_disk_space(path='/github/workspace'):
     """Get disk space for the workspace - cross-platform."""
     try:
         if IS_WINDOWS:
-            # Windows: use wmic or PowerShell
+            # Windows: use fsutil or simple Python os.statvfs alternative
             check_path = path if os.path.exists(path) else 'C:\\'
             drive = os.path.splitdrive(check_path)[0] or 'C:'
-            result = subprocess.run(
-                ['wmic', 'logicaldisk', 'where', f'DeviceID="{drive}"', 'get', 'Size,FreeSpace'],
-                capture_output=True, text=True, timeout=10, shell=True
+            # Use ctypes to get disk space (fast, no subprocess)
+            import ctypes
+            free_bytes = ctypes.c_ulonglong(0)
+            total_bytes = ctypes.c_ulonglong(0)
+            ctypes.windll.kernel32.GetDiskFreeSpaceExW(
+                ctypes.c_wchar_p(drive + '\\'),
+                None, ctypes.pointer(total_bytes), ctypes.pointer(free_bytes)
             )
-            lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-            if len(lines) >= 2:
-                parts = lines[1].split()
-                if len(parts) >= 2:
-                    free = int(parts[0])
-                    total = int(parts[1])
-                    used = total - free
-                    return {
-                        'total_gb': round(total / (1024**3), 2),
-                        'used_gb': round(used / (1024**3), 2),
-                        'available_gb': round(free / (1024**3), 2),
-                        'percent': round((used / total) * 100, 2) if total > 0 else 0
-                    }
+            total = total_bytes.value
+            free = free_bytes.value
+            used = total - free
+            return {
+                'total_gb': round(total / (1024**3), 2),
+                'used_gb': round(used / (1024**3), 2),
+                'available_gb': round(free / (1024**3), 2),
+                'percent': round((used / total) * 100, 2) if total > 0 else 0
+            }
         else:
             # Linux/macOS: use df
             check_path = path if os.path.exists(path) else '/'
@@ -839,12 +839,13 @@ def get_process_count():
     """Get number of running processes - cross-platform."""
     try:
         if IS_WINDOWS:
+            # Use tasklist which is available on all Windows versions
             result = subprocess.run(
-                ['wmic', 'process', 'get', 'processid'],
-                capture_output=True, text=True, timeout=10, shell=True
+                ['tasklist', '/NH'],
+                capture_output=True, text=True, timeout=10
             )
             lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
-            return len(lines) - 1  # Subtract header
+            return len(lines)
         else:
             # Linux and macOS
             result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=10)
@@ -859,12 +860,8 @@ def get_top_processes(n=10):
     
     try:
         if IS_WINDOWS:
-            # Windows: use wmic
-            result = subprocess.run(
-                ['wmic', 'process', 'get', 'ProcessId,Name,PercentProcessorTime,WorkingSetSize'],
-                capture_output=True, text=True, timeout=15, shell=True
-            )
-            # Windows process info is limited via wmic, return empty for now
+            # Windows: tasklist doesn't give CPU%, just return empty
+            # (Process info on Windows requires WMI or performance counters which are slow)
             return {'by_cpu': [], 'by_mem': []}
         elif IS_MACOS:
             # macOS: ps doesn't support --sort, use different approach
