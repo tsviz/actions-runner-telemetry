@@ -74,13 +74,12 @@ function startCollector(interval) {
   
   let child;
   if (isWindows) {
-    // On Windows, use shell spawn with the full command
-    const cmd = `${pyCmd} "${py}" start`;
-    child = spawn(cmd, [], {
+    // On Windows, spawn Python directly without shell
+    // Use environment variables to pass the data file path
+    child = spawn(pyCmd, [py, 'start'], {
       detached: true,
-      shell: true,
-      windowsHide: true,
       stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
+      windowsHide: true,
     });
   } else {
     child = spawn(pyCmd, [py, 'start'], {

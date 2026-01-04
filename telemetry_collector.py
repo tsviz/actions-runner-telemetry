@@ -1035,27 +1035,27 @@ def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_n
 
 def start_collection():
     """Start collecting metrics."""
-    print(f"📊 Starting telemetry collection (interval: {SAMPLE_INTERVAL}s)")
-    print(f"  Platform: {platform.system()}")
-    print(f"  Data file: {DATA_FILE}")
+    print(f"📊 Starting telemetry collection (interval: {SAMPLE_INTERVAL}s)", flush=True)
+    print(f"  Platform: {platform.system()}", flush=True)
+    print(f"  Data file: {DATA_FILE}", flush=True)
     
     # Test basic metric collection on Windows
     if IS_WINDOWS:
-        print("  Testing Windows metric collection...")
+        print("  Testing Windows metric collection...", flush=True)
         try:
             cpu_val, cpu_mode = get_cpu_usage()
-            print(f"    CPU test: {cpu_val}% (mode={cpu_mode})")
+            print(f"    CPU test: {cpu_val}% (mode={cpu_mode})", flush=True)
             mem = get_memory_info()
-            print(f"    Memory test: {mem.get('percent', 0)}%")
+            print(f"    Memory test: {mem.get('percent', 0)}%", flush=True)
         except Exception as e:
-            print(f"    ⚠️  Metric test failed: {e}")
+            print(f"    ⚠️  Metric test failed: {e}", flush=True)
     
     # Build initial snapshot with error handling for each component
     def safe_call(func, *args, default=None, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            print(f"  ⚠️  {func.__name__} failed: {e}")
+            print(f"  ⚠️  {func.__name__} failed: {e}", flush=True)
             return default
     
     initial_snapshot = {
@@ -1092,9 +1092,9 @@ def start_collection():
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f)
-        print(f"  ✅ Initial data saved to {DATA_FILE}")
+        print(f"  ✅ Initial data saved to {DATA_FILE}", flush=True)
     except Exception as e:
-        print(f"  ❌ Failed to save initial data: {e}")
+        print(f"  ❌ Failed to save initial data: {e}", flush=True)
         return
     
     # Collection loop
