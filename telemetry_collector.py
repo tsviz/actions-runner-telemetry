@@ -1050,21 +1050,31 @@ def start_collection():
         except Exception as e:
             print(f"    ⚠️  Metric test failed: {e}")
     
+    # Build initial snapshot with error handling for each component
+    def safe_call(func, *args, default=None, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"  ⚠️  {func.__name__} failed: {e}")
+            return default
+    
+    initial_snapshot = {
+        'cpu_count': os.cpu_count() or 1,
+        'memory': safe_call(get_memory_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0}),
+        'swap': safe_call(get_swap_info, default={'total_mb': 0, 'used_mb': 0, 'percent': 0}),
+        'disk_space': safe_call(get_disk_space, default={'total_gb': 0, 'used_gb': 0, 'percent': 0}),
+        'file_descriptors': safe_call(get_file_descriptors, default={'current': 0, 'max': 0}),
+        'tcp_connections': safe_call(get_tcp_connections, default={}),
+        'processes': safe_call(get_top_processes, 10, default={'by_cpu': [], 'by_mem': []})
+    }
+    
     # Initial metadata
     data = {
         'start_time': time.time(),
         'start_datetime': datetime.now().isoformat(),
         'interval': SAMPLE_INTERVAL,
         'samples': [],
-        'initial_snapshot': {
-            'cpu_count': os.cpu_count(),
-            'memory': get_memory_info(),
-            'swap': get_swap_info(),
-            'disk_space': get_disk_space(),
-            'file_descriptors': get_file_descriptors(),
-            'tcp_connections': get_tcp_connections(),
-            'processes': get_top_processes(10)
-        },
+        'initial_snapshot': initial_snapshot,
         'github_context': {
             'repository': os.environ.get('GITHUB_REPOSITORY', 'N/A'),
             'workflow': os.environ.get('GITHUB_WORKFLOW', 'N/A'),
@@ -1079,8 +1089,13 @@ def start_collection():
     }
     
     # Save initial data
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f)
+    try:
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        print(f"  ✅ Initial data saved to {DATA_FILE}")
+    except Exception as e:
+        print(f"  ❌ Failed to save initial data: {e}")
+        return
     
     # Collection loop
     prev_cpu = None
@@ -1102,7 +1117,7 @@ def start_collection():
             
             # Load existing data with error handling
             try:
-                with open(DATA_FILE, 'r') as f:
+                with open(DATA_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             except (json.JSONDecodeError, IOError) as e:
                 print(f"  ⚠️  Failed to read data file, retrying: {e}")
@@ -1116,7 +1131,7 @@ def start_collection():
             # Save with atomic write (write to temp file, then rename)
             temp_file = DATA_FILE + '.tmp'
             try:
-                with open(temp_file, 'w') as f:
+                with open(temp_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
                 os.replace(temp_file, DATA_FILE)
             except (IOError, OSError) as e:
@@ -1142,7 +1157,7 @@ def stop_collection():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            with open(DATA_FILE, 'r') as f:
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             break
         except json.JSONDecodeError:
@@ -1172,7 +1187,7 @@ def stop_collection():
     # Atomic write
     temp_file = DATA_FILE + '.tmp'
     try:
-        with open(temp_file, 'w') as f:
+        with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         os.replace(temp_file, DATA_FILE)
     except (IOError, OSError) as e:
@@ -1194,7 +1209,7 @@ def mark_step(step_name):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            with open(DATA_FILE, 'r') as f:
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             break
         except json.JSONDecodeError:
@@ -1234,7 +1249,7 @@ def mark_step(step_name):
     # Atomic write
     temp_file = DATA_FILE + '.tmp'
     try:
-        with open(temp_file, 'w') as f:
+        with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         os.replace(temp_file, DATA_FILE)
     except (IOError, OSError) as e:
@@ -1293,7 +1308,7 @@ def snapshot_collection():
         'memory': get_memory_info()
     }
     
-    with open(DATA_FILE, 'w') as f:
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
     
     print(f'\n✅ Collected {len(data["samples"])} samples over {data["duration"]:.1f}s')
