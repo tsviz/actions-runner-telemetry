@@ -66,10 +66,29 @@ function startCollector(interval) {
   const py = actionPath('telemetry_collector.py');
   const logPath = path.join(TEMP_DIR, 'telemetry_collector.log');
   const pidPath = path.join(TEMP_DIR, 'telemetry_collector.pid');
-  const child = spawn(pyCmd, [py, 'start'], {
-    detached: true,
-    stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
-  });
+  
+  // Clear any old log file
+  try { fs.writeFileSync(logPath, ''); } catch (_) {}
+  
+  const isWindows = process.platform === 'win32';
+  
+  let child;
+  if (isWindows) {
+    // On Windows, use shell spawn with the full command
+    const cmd = `${pyCmd} "${py}" start`;
+    child = spawn(cmd, [], {
+      detached: true,
+      shell: true,
+      windowsHide: true,
+      stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
+    });
+  } else {
+    child = spawn(pyCmd, [py, 'start'], {
+      detached: true,
+      stdio: ['ignore', fs.openSync(logPath, 'a'), fs.openSync(logPath, 'a')],
+    });
+  }
+  
   fs.writeFileSync(pidPath, String(child.pid));
   child.unref();
   log(`✅ Telemetry collector started (PID: ${child.pid})`);
