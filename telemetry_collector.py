@@ -313,7 +313,12 @@ def _windows_get_memory_info():
         mem_status = MEMORYSTATUSEX()
         mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
         
-        if kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+        # Properly declare the function signature
+        GlobalMemoryStatusEx = kernel32.GlobalMemoryStatusEx
+        GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(MEMORYSTATUSEX)]
+        GlobalMemoryStatusEx.restype = ctypes.c_int
+        
+        if GlobalMemoryStatusEx(ctypes.byref(mem_status)):
             total_mb = mem_status.ullTotalPhys // (1024 * 1024)
             avail_mb = mem_status.ullAvailPhys // (1024 * 1024)
             used_mb = total_mb - avail_mb
@@ -328,8 +333,8 @@ def _windows_get_memory_info():
                 'percent': percent
             }
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
-    except Exception:
-        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+    except Exception as e:
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0, 'error': str(e)}
 
 
 def _windows_get_disk_io():
@@ -1012,9 +1017,11 @@ def start_collection():
         print("  Testing Windows metric collection...", flush=True)
         try:
             cpu_val, cpu_mode = get_cpu_usage()
-            print(f"    CPU test: {cpu_val}% (mode={cpu_mode})", flush=True)
+            print(f"    CPU test: idle={cpu_val}, total={cpu_mode}", flush=True)
             mem = get_memory_info()
-            print(f"    Memory test: {mem.get('percent', 0)}%", flush=True)
+            print(f"    Memory test: total={mem.get('total_mb', 0)}MB, percent={mem.get('percent', 0)}%", flush=True)
+            if mem.get('error'):
+                print(f"    Memory error: {mem.get('error')}", flush=True)
         except Exception as e:
             print(f"    ⚠️  Metric test failed: {e}", flush=True)
     
