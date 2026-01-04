@@ -2,6 +2,8 @@
 """
 Telemetry Collector - Collects system metrics over time.
 Runs in background and samples metrics at regular intervals.
+
+Supports Linux, macOS, and Windows platforms.
 """
 
 import os
@@ -9,13 +11,367 @@ import sys
 import json
 import time
 import subprocess
+import platform
+import re
 from datetime import datetime
 from pathlib import Path
 
-DATA_FILE = os.environ.get('TELEMETRY_DATA_FILE', '/tmp/telemetry_data.json')
+# Detect platform once at module load
+PLATFORM = platform.system()  # 'Linux', 'Darwin' (macOS), or 'Windows'
+IS_LINUX = PLATFORM == 'Linux'
+IS_MACOS = PLATFORM == 'Darwin'
+IS_WINDOWS = PLATFORM == 'Windows'
+
+# Platform-specific data file path
+if IS_WINDOWS:
+    _default_data_file = os.path.join(os.environ.get('TEMP', 'C:\\Temp'), 'telemetry_data.json')
+else:
+    _default_data_file = '/tmp/telemetry_data.json'
+
+DATA_FILE = os.environ.get('TELEMETRY_DATA_FILE', _default_data_file)
 SAMPLE_INTERVAL = float(os.environ.get('TELEMETRY_INTERVAL', '2'))  # seconds
 
-def get_cpu_usage():
+
+# ============================================================================
+# PLATFORM-SPECIFIC IMPLEMENTATIONS
+# ============================================================================
+
+# --- macOS implementations ---
+
+def _macos_get_cpu_usage():
+    """Get CPU usage on macOS using top command."""
+    try:
+        # Use top in logging mode for a quick sample
+        result = subprocess.run(
+            ['top', '-l', '1', '-n', '0'],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.split('\n'):
+            if 'CPU usage' in line:
+                # "CPU usage: 10.0% user, 5.0% sys, 85.0% idle"
+                match = re.search(r'(\d+\.?\d*)% idle', line)
+                if match:
+                    idle_pct = float(match.group(1))
+                    # Return as (idle, total) to match Linux interface
+                    return int(idle_pct * 100), 10000
+        return 0, 1
+    except:
+        return 0, 1
+
+
+def _macos_get_memory_info():
+    """Get memory info on macOS using vm_stat and sysctl."""
+    try:
+        # Get total memory
+        result = subprocess.run(
+            ['sysctl', '-n', 'hw.memsize'],
+            capture_output=True, text=True, timeout=5
+        )
+        total_bytes = int(result.stdout.strip())
+        total_mb = total_bytes // (1024 * 1024)
+        
+        # Get memory stats from vm_stat
+        result = subprocess.run(['vm_stat'], capture_output=True, text=True, timeout=5)
+        
+        # Parse vm_stat output
+        page_size = 4096  # Default page size
+        stats = {}
+        for line in result.stdout.split('\n'):
+            if 'page size of' in line:
+                match = re.search(r'page size of (\d+) bytes', line)
+                if match:
+                    page_size = int(match.group(1))
+            elif ':' in line:
+                key, value = line.split(':')
+                value = value.strip().rstrip('.')
+                if value.isdigit():
+                    stats[key.strip()] = int(value)
+        
+        # Calculate used memory
+        free_pages = stats.get('Pages free', 0)
+        inactive_pages = stats.get('Pages inactive', 0)
+        speculative_pages = stats.get('Pages speculative', 0)
+        
+        available_pages = free_pages + inactive_pages + speculative_pages
+        available_mb = (available_pages * page_size) // (1024 * 1024)
+        used_mb = total_mb - available_mb
+        
+        return {
+            'total_mb': total_mb,
+            'used_mb': used_mb,
+            'available_mb': available_mb,
+            'buffers_mb': 0,
+            'cached_mb': 0,
+            'percent': round((used_mb / total_mb) * 100, 2) if total_mb > 0 else 0
+        }
+    except:
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+
+
+def _macos_get_disk_io():
+    """Get disk I/O on macOS using iostat."""
+    try:
+        result = subprocess.run(
+            ['iostat', '-d', '-c', '1'],
+            capture_output=True, text=True, timeout=5
+        )
+        # iostat output varies, return cumulative bytes if available
+        # For now, return zeros - iostat on macOS doesn't easily give cumulative
+        return {'read_bytes': 0, 'write_bytes': 0}
+    except:
+        return {'read_bytes': 0, 'write_bytes': 0}
+
+
+def _macos_get_network_io():
+    """Get network I/O on macOS using netstat."""
+    try:
+        result = subprocess.run(
+            ['netstat', '-ib'],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = result.stdout.strip().split('\n')
+        total_rx = 0
+        total_tx = 0
+        
+        for line in lines[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 10 and parts[0] != 'lo0':
+                # Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes
+                try:
+                    # Find columns with bytes (usually Ibytes=6, Obytes=9)
+                    ibytes_idx = 6
+                    obytes_idx = 9
+                    if parts[ibytes_idx].isdigit() and parts[obytes_idx].isdigit():
+                        total_rx += int(parts[ibytes_idx])
+                        total_tx += int(parts[obytes_idx])
+                except (IndexError, ValueError):
+                    pass
+        
+        return {'rx_bytes': total_rx, 'tx_bytes': total_tx}
+    except:
+        return {'rx_bytes': 0, 'tx_bytes': 0}
+
+
+def _macos_get_load_average():
+    """Get load average on macOS using sysctl."""
+    try:
+        result = subprocess.run(
+            ['sysctl', '-n', 'vm.loadavg'],
+            capture_output=True, text=True, timeout=5
+        )
+        # Output: "{ 1.52 1.67 1.89 }"
+        match = re.search(r'\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', result.stdout)
+        if match:
+            return {
+                'load_1m': float(match.group(1)),
+                'load_5m': float(match.group(2)),
+                'load_15m': float(match.group(3)),
+                'running_procs': 'N/A'
+            }
+        return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
+    except:
+        return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
+
+
+def _macos_get_cpu_detailed():
+    """Get detailed CPU metrics on macOS."""
+    try:
+        result = subprocess.run(
+            ['top', '-l', '1', '-n', '0'],
+            capture_output=True, text=True, timeout=5
+        )
+        user = sys_pct = idle = 0
+        for line in result.stdout.split('\n'):
+            if 'CPU usage' in line:
+                match = re.search(r'(\d+\.?\d*)% user.*?(\d+\.?\d*)% sys.*?(\d+\.?\d*)% idle', line)
+                if match:
+                    user = int(float(match.group(1)) * 100)
+                    sys_pct = int(float(match.group(2)) * 100)
+                    idle = int(float(match.group(3)) * 100)
+        
+        total = user + sys_pct + idle
+        return {
+            'user': user,
+            'nice': 0,
+            'system': sys_pct,
+            'idle': idle,
+            'iowait': 0,  # Not available on macOS
+            'irq': 0,
+            'softirq': 0,
+            'steal': 0,   # Not available on macOS
+            'total': total if total > 0 else 10000
+        }
+    except:
+        return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
+
+
+def _macos_get_swap_info():
+    """Get swap info on macOS."""
+    try:
+        result = subprocess.run(
+            ['sysctl', '-n', 'vm.swapusage'],
+            capture_output=True, text=True, timeout=5
+        )
+        # Output: "total = 2048.00M  used = 1024.00M  free = 1024.00M  (encrypted)"
+        total = used = free = 0
+        match = re.search(r'total\s*=\s*([\d.]+)M.*used\s*=\s*([\d.]+)M.*free\s*=\s*([\d.]+)M', result.stdout)
+        if match:
+            total = int(float(match.group(1)))
+            used = int(float(match.group(2)))
+            free = int(float(match.group(3)))
+        
+        return {
+            'total_mb': total,
+            'used_mb': used,
+            'free_mb': free,
+            'percent': round((used / total) * 100, 2) if total > 0 else 0
+        }
+    except:
+        return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
+
+
+# --- Windows implementations ---
+
+def _windows_get_cpu_usage():
+    """Get CPU usage on Windows using wmic."""
+    try:
+        result = subprocess.run(
+            ['wmic', 'cpu', 'get', 'loadpercentage'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        if len(lines) >= 2 and lines[1].isdigit():
+            cpu_pct = int(lines[1])
+            idle_pct = 100 - cpu_pct
+            return int(idle_pct * 100), 10000
+        return 0, 1
+    except:
+        return 0, 1
+
+
+def _windows_get_memory_info():
+    """Get memory info on Windows using wmic."""
+    try:
+        # Get total and free memory
+        result = subprocess.run(
+            ['wmic', 'OS', 'get', 'TotalVisibleMemorySize,FreePhysicalMemory'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        
+        if len(lines) >= 2:
+            parts = lines[1].split()
+            if len(parts) >= 2:
+                free_kb = int(parts[0])
+                total_kb = int(parts[1])
+                used_kb = total_kb - free_kb
+                
+                return {
+                    'total_mb': total_kb // 1024,
+                    'used_mb': used_kb // 1024,
+                    'available_mb': free_kb // 1024,
+                    'buffers_mb': 0,
+                    'cached_mb': 0,
+                    'percent': round((used_kb / total_kb) * 100, 2) if total_kb > 0 else 0
+                }
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+    except:
+        return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+
+
+def _windows_get_disk_io():
+    """Get disk I/O on Windows - limited support."""
+    # Windows doesn't easily expose cumulative I/O via command line
+    return {'read_bytes': 0, 'write_bytes': 0}
+
+
+def _windows_get_network_io():
+    """Get network I/O on Windows using netstat."""
+    try:
+        result = subprocess.run(
+            ['netstat', '-e'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        lines = result.stdout.strip().split('\n')
+        
+        for line in lines:
+            if 'Bytes' in line:
+                parts = line.split()
+                if len(parts) >= 3:
+                    rx = int(parts[1])
+                    tx = int(parts[2])
+                    return {'rx_bytes': rx, 'tx_bytes': tx}
+        
+        return {'rx_bytes': 0, 'tx_bytes': 0}
+    except:
+        return {'rx_bytes': 0, 'tx_bytes': 0}
+
+
+def _windows_get_load_average():
+    """Windows doesn't have load average concept."""
+    return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
+
+
+def _windows_get_cpu_detailed():
+    """Get detailed CPU metrics on Windows."""
+    try:
+        result = subprocess.run(
+            ['wmic', 'cpu', 'get', 'loadpercentage'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        
+        cpu_pct = 0
+        if len(lines) >= 2 and lines[1].isdigit():
+            cpu_pct = int(lines[1])
+        
+        user = cpu_pct * 100
+        idle = (100 - cpu_pct) * 100
+        
+        return {
+            'user': user,
+            'nice': 0,
+            'system': 0,
+            'idle': idle,
+            'iowait': 0,
+            'irq': 0,
+            'softirq': 0,
+            'steal': 0,
+            'total': 10000
+        }
+    except:
+        return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
+
+
+def _windows_get_swap_info():
+    """Get swap/page file info on Windows."""
+    try:
+        result = subprocess.run(
+            ['wmic', 'pagefile', 'get', 'AllocatedBaseSize,CurrentUsage'],
+            capture_output=True, text=True, timeout=10, shell=True
+        )
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        
+        if len(lines) >= 2:
+            parts = lines[1].split()
+            if len(parts) >= 2:
+                total_mb = int(parts[0])
+                used_mb = int(parts[1])
+                free_mb = total_mb - used_mb
+                return {
+                    'total_mb': total_mb,
+                    'used_mb': used_mb,
+                    'free_mb': free_mb,
+                    'percent': round((used_mb / total_mb) * 100, 2) if total_mb > 0 else 0
+                }
+        return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
+    except:
+        return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
+
+
+# --- Linux implementations (original) ---
+
+def _linux_get_cpu_usage():
     """Get CPU usage percentage."""
     try:
         with open('/proc/stat', 'r') as f:
@@ -28,7 +384,7 @@ def get_cpu_usage():
     except:
         return 0, 1
 
-def get_memory_info():
+def _linux_get_memory_info():
     """Get memory usage information."""
     try:
         with open('/proc/meminfo', 'r') as f:
@@ -57,7 +413,7 @@ def get_memory_info():
     except:
         return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
 
-def get_disk_io():
+def _linux_get_disk_io():
     """Get disk I/O statistics."""
     try:
         with open('/proc/diskstats', 'r') as f:
@@ -76,7 +432,7 @@ def get_disk_io():
     except:
         return {'read_bytes': 0, 'write_bytes': 0}
 
-def get_network_io():
+def _linux_get_network_io():
     """Get network I/O statistics."""
     try:
         with open('/proc/net/dev', 'r') as f:
@@ -97,7 +453,7 @@ def get_network_io():
     except:
         return {'rx_bytes': 0, 'tx_bytes': 0}
 
-def get_load_average():
+def _linux_get_load_average():
     """Get system load average."""
     try:
         with open('/proc/loadavg', 'r') as f:
@@ -111,7 +467,7 @@ def get_load_average():
     except:
         return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0}
 
-def get_cpu_detailed():
+def _linux_get_cpu_detailed():
     """Get detailed CPU metrics including iowait and steal."""
     try:
         with open('/proc/stat', 'r') as f:
@@ -135,7 +491,7 @@ def get_cpu_detailed():
     except:
         return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
 
-def get_context_switches():
+def _linux_get_context_switches():
     """Get context switch count from /proc/stat."""
     try:
         with open('/proc/stat', 'r') as f:
@@ -146,7 +502,7 @@ def get_context_switches():
     except:
         return 0
 
-def get_swap_info():
+def _linux_get_swap_info():
     """Get swap usage information."""
     try:
         with open('/proc/meminfo', 'r') as f:
@@ -171,33 +527,152 @@ def get_swap_info():
     except:
         return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
 
+
+# ============================================================================
+# PLATFORM DISPATCH FUNCTIONS
+# ============================================================================
+
+def get_cpu_usage():
+    """Get CPU usage percentage - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_cpu_usage()
+    elif IS_MACOS:
+        return _macos_get_cpu_usage()
+    elif IS_WINDOWS:
+        return _windows_get_cpu_usage()
+    return 0, 1
+
+
+def get_memory_info():
+    """Get memory usage information - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_memory_info()
+    elif IS_MACOS:
+        return _macos_get_memory_info()
+    elif IS_WINDOWS:
+        return _windows_get_memory_info()
+    return {'total_mb': 0, 'used_mb': 0, 'available_mb': 0, 'percent': 0}
+
+
+def get_disk_io():
+    """Get disk I/O statistics - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_disk_io()
+    elif IS_MACOS:
+        return _macos_get_disk_io()
+    elif IS_WINDOWS:
+        return _windows_get_disk_io()
+    return {'read_bytes': 0, 'write_bytes': 0}
+
+
+def get_network_io():
+    """Get network I/O statistics - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_network_io()
+    elif IS_MACOS:
+        return _macos_get_network_io()
+    elif IS_WINDOWS:
+        return _windows_get_network_io()
+    return {'rx_bytes': 0, 'tx_bytes': 0}
+
+
+def get_load_average():
+    """Get system load average - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_load_average()
+    elif IS_MACOS:
+        return _macos_get_load_average()
+    elif IS_WINDOWS:
+        return _windows_get_load_average()
+    return {'load_1m': 0, 'load_5m': 0, 'load_15m': 0, 'running_procs': 'N/A'}
+
+
+def get_cpu_detailed():
+    """Get detailed CPU metrics - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_cpu_detailed()
+    elif IS_MACOS:
+        return _macos_get_cpu_detailed()
+    elif IS_WINDOWS:
+        return _windows_get_cpu_detailed()
+    return {'user': 0, 'nice': 0, 'system': 0, 'idle': 0, 'iowait': 0, 'steal': 0, 'total': 1}
+
+
+def get_context_switches():
+    """Get context switch count - Linux only, returns 0 on other platforms."""
+    if IS_LINUX:
+        return _linux_get_context_switches()
+    # Context switches not easily available on macOS/Windows
+    return 0
+
+
+def get_swap_info():
+    """Get swap usage information - dispatches to platform-specific implementation."""
+    if IS_LINUX:
+        return _linux_get_swap_info()
+    elif IS_MACOS:
+        return _macos_get_swap_info()
+    elif IS_WINDOWS:
+        return _windows_get_swap_info()
+    return {'total_mb': 0, 'used_mb': 0, 'free_mb': 0, 'percent': 0}
+
+
 def get_disk_space(path='/github/workspace'):
-    """Get disk space for the workspace."""
+    """Get disk space for the workspace - cross-platform."""
     try:
-        # Try specified path first, fall back to current directory
-        check_path = path if os.path.exists(path) else '/'
-        result = subprocess.run(
-            ['df', '-B1', check_path],
-            capture_output=True, text=True
-        )
-        lines = result.stdout.strip().split('\n')
-        if len(lines) >= 2:
-            parts = lines[1].split()
-            total = int(parts[1])
-            used = int(parts[2])
-            available = int(parts[3])
-            return {
-                'total_gb': round(total / (1024**3), 2),
-                'used_gb': round(used / (1024**3), 2),
-                'available_gb': round(available / (1024**3), 2),
-                'percent': round((used / total) * 100, 2) if total > 0 else 0
-            }
+        if IS_WINDOWS:
+            # Windows: use wmic or PowerShell
+            check_path = path if os.path.exists(path) else 'C:\\'
+            drive = os.path.splitdrive(check_path)[0] or 'C:'
+            result = subprocess.run(
+                ['wmic', 'logicaldisk', 'where', f'DeviceID="{drive}"', 'get', 'Size,FreeSpace'],
+                capture_output=True, text=True, timeout=10, shell=True
+            )
+            lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+            if len(lines) >= 2:
+                parts = lines[1].split()
+                if len(parts) >= 2:
+                    free = int(parts[0])
+                    total = int(parts[1])
+                    used = total - free
+                    return {
+                        'total_gb': round(total / (1024**3), 2),
+                        'used_gb': round(used / (1024**3), 2),
+                        'available_gb': round(free / (1024**3), 2),
+                        'percent': round((used / total) * 100, 2) if total > 0 else 0
+                    }
+        else:
+            # Linux/macOS: use df
+            check_path = path if os.path.exists(path) else '/'
+            # macOS df doesn't support -B1, use -k for kilobytes
+            df_args = ['df', '-k', check_path] if IS_MACOS else ['df', '-B1', check_path]
+            result = subprocess.run(df_args, capture_output=True, text=True)
+            lines = result.stdout.strip().split('\n')
+            if len(lines) >= 2:
+                parts = lines[1].split()
+                if IS_MACOS:
+                    # macOS df output: Filesystem 1024-blocks Used Available Capacity Mounted
+                    total = int(parts[1]) * 1024  # Convert KB to bytes
+                    used = int(parts[2]) * 1024
+                    available = int(parts[3]) * 1024
+                else:
+                    total = int(parts[1])
+                    used = int(parts[2])
+                    available = int(parts[3])
+                return {
+                    'total_gb': round(total / (1024**3), 2),
+                    'used_gb': round(used / (1024**3), 2),
+                    'available_gb': round(available / (1024**3), 2),
+                    'percent': round((used / total) * 100, 2) if total > 0 else 0
+                }
     except:
         pass
     return {'total_gb': 0, 'used_gb': 0, 'available_gb': 0, 'percent': 0}
 
 def get_file_descriptors():
-    """Get system-wide file descriptor usage."""
+    """Get system-wide file descriptor usage - Linux only."""
+    if not IS_LINUX:
+        return {'allocated': 0, 'free': 0, 'max': 0, 'percent': 0}
     try:
         with open('/proc/sys/fs/file-nr', 'r') as f:
             parts = f.read().strip().split()
@@ -214,7 +689,9 @@ def get_file_descriptors():
         return {'allocated': 0, 'free': 0, 'max': 0, 'percent': 0}
 
 def get_thread_count():
-    """Get total thread count from /proc/stat."""
+    """Get total thread count - Linux only."""
+    if not IS_LINUX:
+        return 0
     try:
         with open('/proc/stat', 'r') as f:
             for line in f:
@@ -236,95 +713,141 @@ def get_thread_count():
         return 0
 
 def get_tcp_connections():
-    """Get TCP connection counts."""
-    try:
-        with open('/proc/net/tcp', 'r') as f:
-            lines = f.readlines()[1:]  # Skip header
+    """Get TCP connection counts - cross-platform."""
+    counts = {'total': 0, 'established': 0, 'time_wait': 0, 'listen': 0, 'other': 0}
+    
+    if IS_LINUX:
+        try:
+            with open('/proc/net/tcp', 'r') as f:
+                lines = f.readlines()[1:]  # Skip header
+                
+            with open('/proc/net/tcp6', 'r') as f:
+                lines += f.readlines()[1:]  # Skip header
             
-        with open('/proc/net/tcp6', 'r') as f:
-            lines += f.readlines()[1:]  # Skip header
-        
-        # TCP states (from hex status in column 3)
-        states = {
-            '01': 'ESTABLISHED',
-            '02': 'SYN_SENT', 
-            '03': 'SYN_RECV',
-            '04': 'FIN_WAIT1',
-            '05': 'FIN_WAIT2',
-            '06': 'TIME_WAIT',
-            '07': 'CLOSE',
-            '08': 'CLOSE_WAIT',
-            '09': 'LAST_ACK',
-            '0A': 'LISTEN',
-            '0B': 'CLOSING'
-        }
-        
-        counts = {'total': 0, 'established': 0, 'time_wait': 0, 'listen': 0, 'other': 0}
-        
-        for line in lines:
-            parts = line.split()
-            if len(parts) >= 4:
-                state = parts[3].upper()
-                counts['total'] += 1
-                if state == '01':
-                    counts['established'] += 1
-                elif state == '06':
-                    counts['time_wait'] += 1
-                elif state == '0A':
-                    counts['listen'] += 1
-                else:
-                    counts['other'] += 1
-        
-        return counts
-    except:
-        return {'total': 0, 'established': 0, 'time_wait': 0, 'listen': 0, 'other': 0}
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 4:
+                    state = parts[3].upper()
+                    counts['total'] += 1
+                    if state == '01':
+                        counts['established'] += 1
+                    elif state == '06':
+                        counts['time_wait'] += 1
+                    elif state == '0A':
+                        counts['listen'] += 1
+                    else:
+                        counts['other'] += 1
+        except:
+            pass
+    elif IS_MACOS or IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                ['netstat', '-an'],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in result.stdout.split('\n'):
+                if 'tcp' in line.lower():
+                    counts['total'] += 1
+                    upper = line.upper()
+                    if 'ESTABLISHED' in upper:
+                        counts['established'] += 1
+                    elif 'TIME_WAIT' in upper:
+                        counts['time_wait'] += 1
+                    elif 'LISTEN' in upper:
+                        counts['listen'] += 1
+                    else:
+                        counts['other'] += 1
+        except:
+            pass
+    
+    return counts
 
 def get_process_count():
-    """Get number of running processes."""
+    """Get number of running processes - cross-platform."""
     try:
-        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
-        return len(result.stdout.strip().split('\n')) - 1
+        if IS_WINDOWS:
+            result = subprocess.run(
+                ['wmic', 'process', 'get', 'processid'],
+                capture_output=True, text=True, timeout=10, shell=True
+            )
+            lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+            return len(lines) - 1  # Subtract header
+        else:
+            # Linux and macOS
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=10)
+            return len(result.stdout.strip().split('\n')) - 1
     except:
         return 0
 
 def get_top_processes(n=10):
-    """Get top N processes by CPU and memory."""
+    """Get top N processes by CPU and memory - cross-platform."""
+    cpu_procs = []
+    mem_procs = []
+    
     try:
-        result = subprocess.run(
-            ['ps', 'aux', '--sort=-%cpu'],
-            capture_output=True, text=True
-        )
-        lines = result.stdout.strip().split('\n')[1:n+1]
-        cpu_procs = []
-        for line in lines:
-            parts = line.split(None, 10)
-            if len(parts) >= 11:
-                cpu_procs.append({
-                    'pid': parts[1],
-                    'cpu': float(parts[2]),
-                    'mem': float(parts[3]),
-                    'command': parts[10][:50]
-                })
-        
-        result = subprocess.run(
-            ['ps', 'aux', '--sort=-%mem'],
-            capture_output=True, text=True
-        )
-        lines = result.stdout.strip().split('\n')[1:n+1]
-        mem_procs = []
-        for line in lines:
-            parts = line.split(None, 10)
-            if len(parts) >= 11:
-                mem_procs.append({
-                    'pid': parts[1],
-                    'cpu': float(parts[2]),
-                    'mem': float(parts[3]),
-                    'command': parts[10][:50]
-                })
-        
-        return {'by_cpu': cpu_procs, 'by_mem': mem_procs}
+        if IS_WINDOWS:
+            # Windows: use wmic
+            result = subprocess.run(
+                ['wmic', 'process', 'get', 'ProcessId,Name,PercentProcessorTime,WorkingSetSize'],
+                capture_output=True, text=True, timeout=15, shell=True
+            )
+            # Windows process info is limited via wmic, return empty for now
+            return {'by_cpu': [], 'by_mem': []}
+        elif IS_MACOS:
+            # macOS: ps doesn't support --sort, use different approach
+            result = subprocess.run(
+                ['ps', '-Ao', 'pid,%cpu,%mem,comm'],
+                capture_output=True, text=True, timeout=10
+            )
+            lines = result.stdout.strip().split('\n')[1:]  # Skip header
+            procs = []
+            for line in lines:
+                parts = line.split(None, 3)
+                if len(parts) >= 4:
+                    procs.append({
+                        'pid': parts[0],
+                        'cpu': float(parts[1]),
+                        'mem': float(parts[2]),
+                        'command': parts[3][:50]
+                    })
+            # Sort by CPU and memory
+            cpu_procs = sorted(procs, key=lambda x: x['cpu'], reverse=True)[:n]
+            mem_procs = sorted(procs, key=lambda x: x['mem'], reverse=True)[:n]
+        else:
+            # Linux
+            result = subprocess.run(
+                ['ps', 'aux', '--sort=-%cpu'],
+                capture_output=True, text=True, timeout=10
+            )
+            lines = result.stdout.strip().split('\n')[1:n+1]
+            for line in lines:
+                parts = line.split(None, 10)
+                if len(parts) >= 11:
+                    cpu_procs.append({
+                        'pid': parts[1],
+                        'cpu': float(parts[2]),
+                        'mem': float(parts[3]),
+                        'command': parts[10][:50]
+                    })
+            
+            result = subprocess.run(
+                ['ps', 'aux', '--sort=-%mem'],
+                capture_output=True, text=True, timeout=10
+            )
+            lines = result.stdout.strip().split('\n')[1:n+1]
+            for line in lines:
+                parts = line.split(None, 10)
+                if len(parts) >= 11:
+                    mem_procs.append({
+                        'pid': parts[1],
+                        'cpu': float(parts[2]),
+                        'mem': float(parts[3]),
+                        'command': parts[10][:50]
+                    })
     except:
-        return {'by_cpu': [], 'by_mem': []}
+        pass
+    
+    return {'by_cpu': cpu_procs, 'by_mem': mem_procs}
 
 def collect_sample(prev_cpu=None, prev_cpu_detailed=None, prev_disk=None, prev_net=None, prev_ctxt=None):
     """Collect a single sample of all metrics."""

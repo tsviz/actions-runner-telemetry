@@ -10,9 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NOTE: Linux-only for now. The collector reads /proc and Linux-specific paths.
-        # TODO: Expand to [windows-latest, macos-latest] once telemetry_collector.py supports non-Linux metrics.
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -60,11 +58,18 @@ jobs:
           mode: step
           step-name: Test
 
+      - name: Stop Telemetry
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: true
+
       - name: Upload Telemetry Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runner-telemetry
+          name: runner-telemetry-${{ matrix.os }}
           path: |
             telemetry-report.md
             telemetry-dashboard.html

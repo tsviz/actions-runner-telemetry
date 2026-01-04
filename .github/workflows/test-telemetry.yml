@@ -2,9 +2,9 @@ name: Test Telemetry Action
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main ]
   pull_request:
-    branches: [main, master]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       telemetry_enabled:
@@ -224,3 +224,73 @@ jobs:
           else
             echo "⚠️ No snapshot report found"
           fi
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CROSS-PLATFORM: Test on Linux, macOS, and Windows
+  # ═══════════════════════════════════════════════════════════════════
+  test-cross-platform:
+    name: Test ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Telemetry
+        uses: ./
+        with:
+          enabled: true
+          interval: 2
+
+      - name: Simulate Workload
+        shell: bash
+        run: |
+          echo "Running cross-platform workload on ${{ matrix.os }}..."
+          python3 -c "
+          import math, time, platform
+          print(f'Platform: {platform.system()}')
+          print(f'CPU count: {__import__(\"os\").cpu_count()}')
+          # CPU work
+          result = sum(math.sin(i) * math.cos(i) for i in range(1000000))
+          print(f'Computation result: {result}')
+          # Memory work
+          data = ['x' * 1000000 for _ in range(10)]
+          print(f'Allocated {len(data)} MB')
+          time.sleep(3)
+          "
+
+      - name: Stop Telemetry
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          enabled: true
+
+      - name: Verify Report Generated
+        shell: bash
+        run: |
+          echo "Checking for telemetry output on ${{ matrix.os }}..."
+          if [ -f "telemetry-report.md" ] || [ -f "telemetry-report.html" ]; then
+            echo "✅ Telemetry report generated on ${{ matrix.os }}"
+            ls -la telemetry-* 2>/dev/null || dir telemetry-* 2>/dev/null || true
+          else
+            echo "❌ No telemetry report found on ${{ matrix.os }}"
+            exit 1
+          fi
+
+      - name: Upload Cross-Platform Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            telemetry-report.md
+            telemetry-dashboard.html
+            telemetry-raw.json
+            telemetry-samples.csv
+            telemetry-summary.json
+          retention-days: 14
+          if-no-files-found: warn
