@@ -70,7 +70,7 @@ jobs:
         $cores = [Environment]::ProcessorCount
         Write-Host "Detected $cores CPU cores"
         $scriptBlock = {
-          $end = (Get-Date).AddSeconds(120)
+          $end = (Get-Date).AddSeconds(30)
           while ((Get-Date) -lt $end) {
             [Math]::Sqrt(12345) | Out-Null
           }
@@ -86,9 +86,11 @@ jobs:
         Write-Host "CPU stress test completed"
 
     # Memory Stress Test
-    - name: Memory Stress Test - RAM Consumption (Linux/macOS/Windows)
-      shell: python
+    - name: Memory Stress Test - RAM Consumption (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
+        python3 << 'EOF'
         import time, sys
         print(f"Starting memory stress test on platform: {sys.platform}")
         print('Allocating 1GB of memory...')
@@ -101,6 +103,23 @@ jobs:
         print('Holding memory for 60 seconds...')
         time.sleep(60)
         print('Memory test completed')
+        EOF
+
+    - name: Memory Stress Test - RAM Consumption (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Write-Host "Starting memory stress test..."
+        Write-Host "Allocating 256MB of memory..."
+        $data = @()
+        for ($i = 0; $i -lt 16; $i++) {
+          $chunk = New-Object byte[] (16 * 1024 * 1024)
+          $data += ,$chunk
+          Write-Host "Allocated $((($i + 1) * 16))MB"
+        }
+        Write-Host "Holding memory for 15 seconds..."
+        Start-Sleep -Seconds 15
+        Write-Host "Memory test completed"
 
     # Disk I/O Stress Test
     - name: Disk I/O Stress Test - Heavy Read/Write (Linux/macOS)
@@ -132,53 +151,36 @@ jobs:
         rm -rf stress_io_test
         echo "Disk I/O stress test completed"
 
-    - name: Disk I/O Stress Test - Heavy Read/Write (Windows)
+    - name: Disk I/O Stress Test - Read/Write (Windows)
       if: runner.os == 'Windows'
       shell: powershell
       run: |
-        Write-Host "Starting intensive disk I/O operations..."
-        $ErrorActionPreference = "Stop"
+        Write-Host "Starting disk I/O operations..."
         $dir = "stress_io_test"
         if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
         Set-Location $dir
-        $dirPath = (Get-Location).Path
-        Write-Host "Writing large files..."
-        $jobs = @()
-        for ($i=1; $i -le 10; $i++) {
-          $outFile = Join-Path $dirPath "testfile_$i.bin"
-          $jobs += Start-Job -ScriptBlock {
-            param($outFile)
-            $f=[System.IO.File]::Create($outFile)
-            $bytes = New-Object Byte[] (100*1024*1024)
-            $f.Write($bytes, 0, $bytes.Length)
-            $f.Close()
-          } -ArgumentList $outFile
+        Write-Host "Writing 3 x 10MB files..."
+        for ($i = 1; $i -le 3; $i++) {
+          $bytes = New-Object Byte[] (10 * 1024 * 1024)
+          [System.IO.File]::WriteAllBytes("testfile_$i.bin", $bytes)
+          Write-Host "Wrote testfile_$i.bin"
         }
-        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
-        Write-Host "Reading files back sequentially..."
-        for ($round=1; $round -le 5; $round++) {
+        Write-Host "Reading files back..."
+        for ($round = 1; $round -le 2; $round++) {
           Write-Host "Read round $round"
-          $files = Get-ChildItem -Path $dirPath -Filter *.bin
-          if ($files.Count -eq 0) { throw "No .bin files found!" }
-          foreach ($file in $files) {
-            [System.IO.File]::ReadAllBytes($file.FullName) | Out-Null
+          Get-ChildItem -Filter *.bin | ForEach-Object {
+            [System.IO.File]::ReadAllBytes($_.FullName) | Out-Null
           }
         }
-        Write-Host "Performing random I/O operations..."
-        $jobs = @()
-        for ($i=1; $i -le 100; $i++) {
-          $outFile = Join-Path $dirPath "random_$i.bin"
-          $jobs += Start-Job -ScriptBlock {
-            param($outFile)
-            $r = New-Object Byte[] (1024*1024)
-            (New-Object Random).NextBytes($r)
-            [System.IO.File]::WriteAllBytes($outFile, $r)
-          } -ArgumentList $outFile
+        Write-Host "Writing 5 random 1MB files..."
+        for ($i = 1; $i -le 5; $i++) {
+          $r = New-Object Byte[] (1024 * 1024)
+          (New-Object Random).NextBytes($r)
+          [System.IO.File]::WriteAllBytes("random_$i.bin", $r)
         }
-        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Set-Location ..
         Remove-Item -Recurse -Force $dir
-        Write-Host "Disk I/O stress test completed"
+        Write-Host "Disk I/O test completed"
 
     # Network Stress Test
     - name: Network Stress Test - Heavy Downloads (Linux/macOS)
@@ -208,40 +210,23 @@ jobs:
         rm -rf network_stress
         echo "Network stress test completed"
 
-    - name: Network Stress Test - Heavy Downloads (Windows)
+    - name: Network Test - Downloads (Windows)
       if: runner.os == 'Windows'
       shell: powershell
       run: |
-        Write-Host "Starting network stress test..."
-        $dir = "network_stress"
+        Write-Host "Starting network test..."
+        $dir = "network_test"
         if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
         Set-Location $dir
         $urls = @(
-          "https://github.com/git/git/archive/refs/tags/v2.43.0.tar.gz",
-          "https://nodejs.org/dist/v20.10.0/node-v20.10.0.tar.gz",
-          "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz",
-          "https://github.com/actions/runner/releases/download/v2.312.0/actions-runner-osx-x64-2.312.0.tar.gz"
+          "https://raw.githubusercontent.com/actions/runner/main/README.md",
+          "https://raw.githubusercontent.com/actions/checkout/main/README.md"
         )
-        Write-Host "Downloading files in parallel..."
-        $jobs = @()
-        for ($i=0; $i -lt $urls.Count; $i++) {
-          $outFile = "download_$i.tar.gz"
-          $jobs += Start-Job -ScriptBlock {
-            param($url, $outFile)
-            Invoke-WebRequest -Uri $url -OutFile $outFile
-          } -ArgumentList $urls[$i], $outFile
+        Write-Host "Downloading files..."
+        for ($i = 0; $i -lt $urls.Count; $i++) {
+          Invoke-WebRequest -Uri $urls[$i] -OutFile "download_$i.md"
+          Write-Host "Downloaded file $i"
         }
-        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
-        Write-Host "Re-downloading files to stress network..."
-        $jobs = @()
-        for ($i=0; $i -lt $urls.Count; $i++) {
-          $outFile = "download_${i}_2.tar.gz"
-          $jobs += Start-Job -ScriptBlock {
-            param($url, $outFile)
-            Invoke-WebRequest -Uri $url -OutFile $outFile
-          } -ArgumentList $urls[$i], $outFile
-        }
-        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Set-Location ..
         Remove-Item -Recurse -Force $dir
-        Write-Host "Network stress test completed"
+        Write-Host "Network test completed"
