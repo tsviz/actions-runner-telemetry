@@ -230,3 +230,15 @@ jobs:
         Set-Location ..
         Remove-Item -Recurse -Force $dir
         Write-Host "Network test completed"
+
+    - name: Upload Telemetry Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: runner-telemetry-${{ inputs.runner }}
+        path: |
+          telemetry-report.md
+          telemetry-dashboard.html
+          telemetry-raw.json
+          telemetry-samples.csv
+          telemetry-summary.json
