@@ -30,7 +30,8 @@ function setEnv(k, v) {
 }
 
 function getInputEnv(name, def) {
-  const v = process.env[`INPUT_${name.toUpperCase().replace(/-/g, '_')}`];
+  // GitHub Actions preserves hyphens in INPUT_* env var names
+  const v = process.env[`INPUT_${name.toUpperCase()}`];
   return (v === undefined || v === '') ? def : v;
 }
 
