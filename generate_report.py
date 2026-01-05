@@ -1841,6 +1841,12 @@ Your job is **straining resources** on the current runner:
             section += """
 **Cost Impact (accounting for faster execution):**
 """
+            # Add disclaimer for self-hosted runners
+            if is_self_hosted_ctx:
+                section += """
+> ℹ️ *This cost analysis is theoretical and compares against an equivalent GitHub-hosted runner. Your self-hosted runner has no measured per-minute cost—the figures below represent what you would pay if using GitHub-hosted infrastructure.*
+
+"""
             
             # Different cost display based on billing context
             if current_is_free and not new_is_free:
