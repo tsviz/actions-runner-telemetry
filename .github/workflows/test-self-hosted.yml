@@ -37,7 +37,7 @@ jobs:
 
     - name: Test runner environment (Windows)
       if: runner.os == 'Windows'
-      shell: pwsh
+      shell: powershell
       run: |
         Write-Host "Running on: $(hostname)"
         Write-Host "OS: $($env:OS)"
