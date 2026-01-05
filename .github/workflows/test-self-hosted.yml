@@ -24,7 +24,9 @@ jobs:
     - name: Runner Telemetry Action
       uses: tsviz/actions-runner-telemetry@v1
 
-    - name: Test runner environment
+    - name: Test runner environment (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
         echo "Running on: $(hostname)"
         echo "OS: $(uname -s)"
@@ -32,6 +34,17 @@ jobs:
         echo "Working directory: $(pwd)"
         echo "Node.js version: $(node --version)"
         echo "npm version: $(npm --version)"
+
+    - name: Test runner environment (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Write-Host "Running on: $(hostname)"
+        Write-Host "OS: $($env:OS)"
+        Write-Host "Architecture: $([Environment]::Is64BitOperatingSystem)"
+        Write-Host "Working directory: $(Get-Location)"
+        Write-Host "Node.js version: $(node --version)"
+        Write-Host "npm version: $(npm --version)"
 
     - name: CPU Stress Test - Multi-core Load
       run: |
