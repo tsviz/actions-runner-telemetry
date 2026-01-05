@@ -25,7 +25,8 @@ function getInputEnv(name, def) {
 
 function getState(name) {
   // State is passed via STATE_<name> environment variables in post action
-  return process.env[`STATE_${name.replace(/-/g, '_')}`] || '';
+  // GitHub Actions preserves the exact name (including hyphens)
+  return process.env[`STATE_${name}`] || '';
 }
 
 function runPy(script, args = []) {
