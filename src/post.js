@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
-const artifact = require('@actions/artifact');
 const core = require('@actions/core');
 
 // Cross-platform temp directory
@@ -70,34 +69,25 @@ async function uploadArtifacts(workspace, artifactName) {
   log(`📦 Uploading ${existingFiles.length} telemetry files as artifact: ${artifactName}`);
   
   try {
-    const client = artifact.create();
+    // @actions/artifact v2+ API
+    const { DefaultArtifactClient } = require('@actions/artifact');
+    const client = new DefaultArtifactClient();
+    
     const uploadResponse = await client.uploadArtifact(
       artifactName,
       existingFiles,
-      workspace,
-      { continueOnError: true }
+      {
+        retentionDays: 90
+      }
     );
     
-    if (uploadResponse.failedItems.length > 0) {
-      log(`⚠️  Failed to upload some files: ${uploadResponse.failedItems.join(', ')}`);
-    } else {
-      log(`✅ Artifact uploaded successfully: ${artifactName}`);
-    }
+    log(`✅ Artifact uploaded successfully: ${artifactName} (ID: ${uploadResponse.id}, Size: ${uploadResponse.size} bytes)`);
   } catch (err) {
-    // Try the newer @actions/artifact v2 API
-    try {
-      const { DefaultArtifactClient } = require('@actions/artifact');
-      const client = new DefaultArtifactClient();
-      const uploadResponse = await client.uploadArtifact(
-        artifactName,
-        existingFiles,
-        workspace
-      );
-      log(`✅ Artifact uploaded successfully: ${artifactName} (ID: ${uploadResponse.id})`);
-    } catch (err2) {
-      log(`⚠️  Failed to upload artifact: ${err2.message}`);
-      core.warning(`Artifact upload failed: ${err2.message}`);
+    log(`⚠️  Failed to upload artifact: ${err.message}`);
+    if (err.stack) {
+      log(`    Stack: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
     }
+    core.warning(`Artifact upload failed: ${err.message}`);
   }
 }
 
