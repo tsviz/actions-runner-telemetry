@@ -23,6 +23,11 @@ function getInputEnv(name, def) {
   return (v === undefined || v === '') ? def : v;
 }
 
+function getState(name) {
+  // State is passed via STATE_<name> environment variables in post action
+  return process.env[`STATE_${name.replace(/-/g, '_')}`] || '';
+}
+
 function runPy(script, args = []) {
   const py = findPython();
   if (!py) {
@@ -142,9 +147,10 @@ async function uploadArtifacts(workspace, artifactName) {
   appendOutput('summary-path', path.join(workspace, 'telemetry-summary.json'));
   
   // Upload artifacts if enabled
-  const uploadArtifactsInput = getInputEnv('upload-artifacts', 'false');
+  const uploadArtifactsInput = getState('upload-artifacts') || getInputEnv('upload-artifacts', 'false');
+  log(`📋 Upload artifacts setting: ${uploadArtifactsInput}`);
   if (uploadArtifactsInput === 'true' || uploadArtifactsInput === '1' || uploadArtifactsInput === 'yes') {
-    const artifactName = getInputEnv('artifact-name', 'runner-telemetry');
+    const artifactName = getState('artifact-name') || getInputEnv('artifact-name', 'runner-telemetry');
     await uploadArtifacts(workspace, artifactName);
   }
 })();

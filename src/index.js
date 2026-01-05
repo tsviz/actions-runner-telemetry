@@ -15,6 +15,12 @@ function appendOutput(name, value) {
   fs.appendFileSync(out, `${name}=${value}\n`);
 }
 
+function saveState(name, value) {
+  const stateFile = process.env.GITHUB_STATE;
+  if (!stateFile) return;
+  fs.appendFileSync(stateFile, `${name}=${value}\n`);
+}
+
 function log(msg) {
   process.stdout.write(`${msg}\n`);
 }
@@ -140,6 +146,12 @@ async function main() {
   const interval = getInputEnv('interval', '2');
   const stepName = getInputEnv('step-name', '');
   const repoVis = getInputEnv('repo-visibility', 'auto');
+  const uploadArtifacts = getInputEnv('upload-artifacts', 'false');
+  const artifactName = getInputEnv('artifact-name', 'runner-telemetry');
+
+  // Save inputs to state for post action
+  saveState('upload-artifacts', uploadArtifacts);
+  saveState('artifact-name', artifactName);
 
   if (enabled === 'false' || enabled === '0' || enabled === 'no') {
     log('🔍 Runner Telemetry - DISABLED');
