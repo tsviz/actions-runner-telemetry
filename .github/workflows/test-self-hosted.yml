@@ -53,7 +53,7 @@ jobs:
       shell: bash
       run: |
         echo "Starting CPU stress test on all cores..."
-        CORES=$(getconf _NPROCESSORS_ONLN || sysctl -n hw.ncpu)
+        CORES=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
         echo "Detected $CORES CPU cores"
         for i in $(seq 1 "$CORES"); do
           yes > /dev/null &
@@ -79,8 +79,10 @@ jobs:
         for ($i=0; $i -lt $cores; $i++) {
           $jobs += Start-Job -ScriptBlock $scriptBlock
         }
-        Wait-Job -Job $jobs
-        Remove-Job -Job $jobs
+        if ($jobs.Count -gt 0) {
+          Wait-Job -Job $jobs
+          Remove-Job -Job $jobs
+        }
         Write-Host "CPU stress test completed"
 
     # Memory Stress Test
@@ -135,34 +137,50 @@ jobs:
       shell: powershell
       run: |
         Write-Host "Starting intensive disk I/O operations..."
+        $ErrorActionPreference = "Stop"
         $dir = "stress_io_test"
         if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
         Set-Location $dir
+        $dirPath = (Get-Location).Path
         Write-Host "Writing large files..."
         $jobs = @()
         for ($i=1; $i -le 10; $i++) {
-          $jobs += Start-Job -ScriptBlock { $out="testfile_$($args[0]).bin"; $f=[System.IO.File]::Create($out); $bytes = New-Object Byte[] (100*1024*1024); $f.Write($bytes, 0, $bytes.Length); $f.Close() } -ArgumentList $i
+          $outFile = Join-Path $dirPath "testfile_$i.bin"
+          $jobs += Start-Job -ScriptBlock {
+            param($outFile)
+            $f=[System.IO.File]::Create($outFile)
+            $bytes = New-Object Byte[] (100*1024*1024)
+            $f.Write($bytes, 0, $bytes.Length)
+            $f.Close()
+          } -ArgumentList $outFile
         }
-        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Write-Host "Reading files back..."
         for ($round=1; $round -le 5; $round++) {
           Write-Host "Read round $round"
           $jobs = @()
-          Get-ChildItem *.bin | ForEach-Object {
-            $jobs += Start-Job -ScriptBlock { $in=$args[0]; Get-Content $in | Out-Null } -ArgumentList $_.FullName
+          $files = Get-ChildItem -Path $dirPath -Filter *.bin
+          if ($files.Count -eq 0) { throw "No .bin files found!" }
+          foreach ($file in $files) {
+            $jobs += Start-Job -ScriptBlock {
+              param($inFile)
+              [System.IO.File]::ReadAllBytes($inFile) | Out-Null
+            } -ArgumentList $file.FullName
           }
-          Wait-Job -Job $jobs; Remove-Job -Job $jobs
+          if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         }
         Write-Host "Performing random I/O operations..."
         $jobs = @()
         for ($i=1; $i -le 100; $i++) {
+          $outFile = Join-Path $dirPath "random_$i.bin"
           $jobs += Start-Job -ScriptBlock {
+            param($outFile)
             $r = New-Object Byte[] (1024*1024)
             (New-Object Random).NextBytes($r)
-            [System.IO.File]::WriteAllBytes("random_$($args[0]).bin", $r)
-          } -ArgumentList $i
+            [System.IO.File]::WriteAllBytes($outFile, $r)
+          } -ArgumentList $outFile
         }
-        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Set-Location ..
         Remove-Item -Recurse -Force $dir
         Write-Host "Disk I/O stress test completed"
@@ -212,20 +230,23 @@ jobs:
         Write-Host "Downloading files in parallel..."
         $jobs = @()
         for ($i=0; $i -lt $urls.Count; $i++) {
+          $outFile = "download_$i.tar.gz"
           $jobs += Start-Job -ScriptBlock {
-            Invoke-WebRequest -Uri $args[0] -OutFile "download_$($args[1]).tar.gz"
-          } -ArgumentList $urls[$i], $i
+            param($url, $outFile)
+            Invoke-WebRequest -Uri $url -OutFile $outFile
+          } -ArgumentList $urls[$i], $outFile
         }
-        Wait-Job -Job $jobs; Remove-Job -Job $jobs
-
+        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Write-Host "Re-downloading files to stress network..."
         $jobs = @()
         for ($i=0; $i -lt $urls.Count; $i++) {
+          $outFile = "download_${i}_2.tar.gz"
           $jobs += Start-Job -ScriptBlock {
-            Invoke-WebRequest -Uri $args[0] -OutFile "download_$($args[1])_2.tar.gz"
-          } -ArgumentList $urls[$i], $i
+            param($url, $outFile)
+            Invoke-WebRequest -Uri $url -OutFile $outFile
+          } -ArgumentList $urls[$i], $outFile
         }
-        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         Set-Location ..
         Remove-Item -Recurse -Force $dir
         Write-Host "Network stress test completed"
