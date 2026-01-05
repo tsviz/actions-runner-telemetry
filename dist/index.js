@@ -224,6 +224,7 @@ async function main() {
   const artifactName = getInputEnv('artifact-name', 'runner-telemetry');
 
   // Save inputs to state for post action
+  log(`📋 Saving state: upload-artifacts=${uploadArtifacts}, artifact-name=${artifactName}`);
   saveState('upload-artifacts', uploadArtifacts);
   saveState('artifact-name', artifactName);
 
