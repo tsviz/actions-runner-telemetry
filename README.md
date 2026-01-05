@@ -220,6 +220,8 @@ Now your report includes a per-step breakdown showing which step used the most C
 | `mode` | `start` | `start`, `stop`, `step`, or `snapshot` |
 | `interval` | `2` | Sample every N seconds |
 | `step-name` | — | Name of the step (used with `mode: step`) |
+| `upload-artifacts` | `false` | Set to `true` to upload telemetry files as artifacts |
+| `artifact-name` | `runner-telemetry` | Name of the uploaded artifact |
 
 ### Modes Explained
 
@@ -256,7 +258,7 @@ env:
 
 ## Output Files
 
-The action creates these files (optional to upload):
+The action creates these files:
 
 | File | What it contains |
 |------|------------------|
@@ -266,7 +268,22 @@ The action creates these files (optional to upload):
 | `telemetry-samples.csv` | Time-series data for analysis |
 | `telemetry-summary.json` | Flattened summary (dashboard-ready) |
 
-To keep them:
+### Upload as Artifacts (Recommended)
+
+Use the built-in upload option:
+
+```yaml
+- uses: tsviz/actions-runner-telemetry@v1
+  with:
+    upload-artifacts: true
+    artifact-name: my-job-telemetry  # optional, defaults to 'runner-telemetry'
+```
+
+This uploads all telemetry files as a GitHub artifact after the job completes.
+
+### Manual Upload (Alternative)
+
+If you need more control, use a separate upload step:
 
 ```yaml
 - name: Upload report
@@ -281,6 +298,9 @@ To keep them:
       telemetry-samples.csv
       telemetry-summary.json
 ```
+
+> **Note:** The manual approach requires the upload step to run in a post-job hook
+> or you must explicitly use `mode: stop` before uploading.
 
 ## Local Testing
 
