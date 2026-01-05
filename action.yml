@@ -22,6 +22,14 @@ inputs:
     description: "Repository visibility: 'public' (standard runners are free), 'private' (standard runners cost money), or 'auto' (auto-detect from GitHub context). Affects cost analysis and billing context in reports."
     required: false
     default: "auto"
+  upload-artifacts:
+    description: "Upload telemetry files (report, dashboard, data) as a GitHub artifact. Set to 'true' to enable."
+    required: false
+    default: "false"
+  artifact-name:
+    description: "Name of the artifact when upload-artifacts is enabled. Defaults to 'runner-telemetry'."
+    required: false
+    default: "runner-telemetry"
 outputs:
   report-path:
     description: "Path to the generated markdown telemetry report"

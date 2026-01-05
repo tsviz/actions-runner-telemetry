@@ -23,6 +23,9 @@ jobs:
 
     - name: Runner Telemetry Action
       uses: tsviz/actions-runner-telemetry@v1
+      with:
+        upload-artifacts: true
+        artifact-name: runner-telemetry-${{ inputs.runner }}
 
     # Environment Info
     - name: Test runner environment (Linux/macOS)
@@ -230,15 +233,3 @@ jobs:
         Set-Location ..
         Remove-Item -Recurse -Force $dir
         Write-Host "Network test completed"
-
-    - name: Upload Telemetry Artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: runner-telemetry-${{ inputs.runner }}
-        path: |
-          telemetry-report.md
-          telemetry-dashboard.html
-          telemetry-raw.json
-          telemetry-samples.csv
-          telemetry-summary.json

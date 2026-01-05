@@ -1,0 +1,29 @@
+{
+  "name": "actions-runner-telemetry",
+  "version": "1.7.0",
+  "description": "Collect system telemetry from GitHub Actions runners with visual dashboards and per-step tracking.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/index.js -o dist && ncc build src/post.js -o dist/post-temp && mv dist/post-temp/index.js dist/post.js && rm -rf dist/post-temp",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tsviz/actions-runner-telemetry.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/tsviz/actions-runner-telemetry/issues"
+  },
+  "homepage": "https://github.com/tsviz/actions-runner-telemetry#readme",
+  "dependencies": {
+    "@actions/artifact": "^5.0.1",
+    "@actions/core": "^2.0.1"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.4"
+  }
+}
