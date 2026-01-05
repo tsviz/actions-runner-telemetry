@@ -151,13 +151,7 @@ async function uploadArtifacts(workspace, artifactName) {
   appendOutput('summary-path', path.join(workspace, 'telemetry-summary.json'));
   
   // Upload artifacts if enabled
-  // Debug: show all STATE_ environment variables
-  const stateVars = Object.keys(process.env).filter(k => k.startsWith('STATE_'));
-  log(`📋 Available STATE variables: ${stateVars.length > 0 ? stateVars.join(', ') : '(none)'}`);
-  stateVars.forEach(k => log(`   ${k}=${process.env[k]}`));
-  
   const uploadArtifactsInput = getState('upload-artifacts') || getInputEnv('upload-artifacts', 'false');
-  log(`📋 Upload artifacts setting: ${uploadArtifactsInput}`);
   if (uploadArtifactsInput === 'true' || uploadArtifactsInput === '1' || uploadArtifactsInput === 'yes') {
     const artifactName = getState('artifact-name') || getInputEnv('artifact-name', 'runner-telemetry');
     await uploadArtifacts(workspace, artifactName);
