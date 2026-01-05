@@ -24,6 +24,7 @@ jobs:
     - name: Runner Telemetry Action
       uses: tsviz/actions-runner-telemetry@v1
 
+    # Environment Info
     - name: Test runner environment (Linux/macOS)
       if: runner.os != 'Windows'
       shell: bash
@@ -39,120 +40,192 @@ jobs:
       if: runner.os == 'Windows'
       shell: powershell
       run: |
-        Write-Host "Running on: $(hostname)"
-        Write-Host "OS: $($env:OS)"
-        Write-Host "Architecture: $([Environment]::Is64BitOperatingSystem)"
+        Write-Host "Running on: $env:COMPUTERNAME"
+        Write-Host "OS: $env:OS"
+        Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
         Write-Host "Working directory: $(Get-Location)"
         Write-Host "Node.js version: $(node --version)"
         Write-Host "npm version: $(npm --version)"
 
-    - name: CPU Stress Test - Multi-core Load
+    # CPU Stress Test - Multi-core Load
+    - name: CPU Stress Test - Multi-core Load (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
         echo "Starting CPU stress test on all cores..."
-        
-        # Get number of CPU cores
-        CORES=$(sysctl -n hw.ncpu)
+        CORES=$(getconf _NPROCESSORS_ONLN || sysctl -n hw.ncpu)
         echo "Detected $CORES CPU cores"
-        
-        # Run CPU intensive tasks on all cores for 2 minutes
-        for i in $(seq 1 $CORES); do
+        for i in $(seq 1 "$CORES"); do
           yes > /dev/null &
         done
-        
-        # Let it run for 2 minutes
         sleep 120
-        
-        # Kill all background yes processes
-        killall yes
+        killall yes || pkill yes
         echo "CPU stress test completed"
 
-    - name: Memory Stress Test - RAM Consumption
+    - name: CPU Stress Test - Multi-core Load (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
       run: |
-        echo "Starting memory stress test..."
-        
-        # Create large memory allocation (1GB)
-        python3 -c "
-        import time
+        Write-Host "Starting CPU stress test on all cores..."
+        $cores = [Environment]::ProcessorCount
+        Write-Host "Detected $cores CPU cores"
+        $scriptBlock = {
+          $end = (Get-Date).AddSeconds(120)
+          while ((Get-Date) -lt $end) {
+            [Math]::Sqrt(12345) | Out-Null
+          }
+        }
+        $jobs = @()
+        for ($i=0; $i -lt $cores; $i++) {
+          $jobs += Start-Job -ScriptBlock $scriptBlock
+        }
+        Wait-Job -Job $jobs
+        Remove-Job -Job $jobs
+        Write-Host "CPU stress test completed"
+
+    # Memory Stress Test
+    - name: Memory Stress Test - RAM Consumption (Linux/macOS/Windows)
+      shell: python
+      run: |
+        import time, sys
+        print(f"Starting memory stress test on platform: {sys.platform}")
         print('Allocating 1GB of memory...')
         data = []
         for i in range(100):
-            # Allocate 10MB chunks
             chunk = bytearray(10 * 1024 * 1024)
             data.append(chunk)
             if i % 10 == 0:
-                print(f'Allocated {(i+1) * 10}MB')
-        
+                print(f'Allocated {(i+1)*10}MB')
         print('Holding memory for 60 seconds...')
         time.sleep(60)
         print('Memory test completed')
-        "
 
-    - name: Disk I/O Stress Test - Heavy Read/Write
+    # Disk I/O Stress Test
+    - name: Disk I/O Stress Test - Heavy Read/Write (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
         echo "Starting intensive disk I/O operations..."
-        
-        # Create test directory
         mkdir -p stress_io_test
         cd stress_io_test
-        
         echo "Writing large files with dd..."
-        # Write 10 files of 100MB each
         for i in {1..10}; do
-          dd if=/dev/zero of=testfile_${i}.bin bs=1m count=100 &
+          dd if=/dev/zero of=testfile_${i}.bin bs=1M count=100 &
         done
         wait
-        
         echo "Reading files back..."
-        # Read all files multiple times
         for round in {1..5}; do
           echo "Read round $round"
           for file in *.bin; do
-            dd if=$file of=/dev/null bs=1m &
+            dd if="$file" of=/dev/null bs=1M &
           done
           wait
         done
-        
         echo "Performing random I/O operations..."
-        # Random read/write operations
         for i in {1..100}; do
-          dd if=/dev/random of=random_${i}.bin bs=1k count=1024 2>/dev/null &
+          dd if=/dev/urandom of=random_${i}.bin bs=1K count=1024 2>/dev/null &
         done
         wait
-        
-        # Cleanup
         cd ..
         rm -rf stress_io_test
         echo "Disk I/O stress test completed"
 
-    - name: Network Stress Test - Heavy Downloads
+    - name: Disk I/O Stress Test - Heavy Read/Write (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Write-Host "Starting intensive disk I/O operations..."
+        $dir = "stress_io_test"
+        if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+        Set-Location $dir
+        Write-Host "Writing large files..."
+        $jobs = @()
+        for ($i=1; $i -le 10; $i++) {
+          $jobs += Start-Job -ScriptBlock { $out="testfile_$($args[0]).bin"; $f=[System.IO.File]::Create($out); $bytes = New-Object Byte[] (100*1024*1024); $f.Write($bytes, 0, $bytes.Length); $f.Close() } -ArgumentList $i
+        }
+        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        Write-Host "Reading files back..."
+        for ($round=1; $round -le 5; $round++) {
+          Write-Host "Read round $round"
+          $jobs = @()
+          Get-ChildItem *.bin | ForEach-Object {
+            $jobs += Start-Job -ScriptBlock { $in=$args[0]; Get-Content $in | Out-Null } -ArgumentList $_.FullName
+          }
+          Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        }
+        Write-Host "Performing random I/O operations..."
+        $jobs = @()
+        for ($i=1; $i -le 100; $i++) {
+          $jobs += Start-Job -ScriptBlock {
+            $r = New-Object Byte[] (1024*1024)
+            (New-Object Random).NextBytes($r)
+            [System.IO.File]::WriteAllBytes("random_$($args[0]).bin", $r)
+          } -ArgumentList $i
+        }
+        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        Set-Location ..
+        Remove-Item -Recurse -Force $dir
+        Write-Host "Disk I/O stress test completed"
+
+    # Network Stress Test
+    - name: Network Stress Test - Heavy Downloads (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
         echo "Starting network stress test..."
-        
-        # Download multiple large files simultaneously
         mkdir -p network_stress
         cd network_stress
-        
-        # Array of URLs for downloading
         urls=(
           "https://github.com/git/git/archive/refs/tags/v2.43.0.tar.gz"
           "https://nodejs.org/dist/v20.10.0/node-v20.10.0.tar.gz"
           "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz"
           "https://github.com/actions/runner/releases/download/v2.312.0/actions-runner-osx-x64-2.312.0.tar.gz"
         )
-        
         echo "Downloading files in parallel..."
         for i in "${!urls[@]}"; do
           curl -L "${urls[$i]}" -o "download_${i}.tar.gz" &
         done
         wait
-        
         echo "Re-downloading files to stress network..."
         for i in "${!urls[@]}"; do
           curl -L "${urls[$i]}" -o "download_${i}_2.tar.gz" &
         done
         wait
-        
-        # Cleanup
         cd ..
         rm -rf network_stress
         echo "Network stress test completed"
+
+    - name: Network Stress Test - Heavy Downloads (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Write-Host "Starting network stress test..."
+        $dir = "network_stress"
+        if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+        Set-Location $dir
+        $urls = @(
+          "https://github.com/git/git/archive/refs/tags/v2.43.0.tar.gz",
+          "https://nodejs.org/dist/v20.10.0/node-v20.10.0.tar.gz",
+          "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz",
+          "https://github.com/actions/runner/releases/download/v2.312.0/actions-runner-osx-x64-2.312.0.tar.gz"
+        )
+        Write-Host "Downloading files in parallel..."
+        $jobs = @()
+        for ($i=0; $i -lt $urls.Count; $i++) {
+          $jobs += Start-Job -ScriptBlock {
+            Invoke-WebRequest -Uri $args[0] -OutFile "download_$($args[1]).tar.gz"
+          } -ArgumentList $urls[$i], $i
+        }
+        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+
+        Write-Host "Re-downloading files to stress network..."
+        $jobs = @()
+        for ($i=0; $i -lt $urls.Count; $i++) {
+          $jobs += Start-Job -ScriptBlock {
+            Invoke-WebRequest -Uri $args[0] -OutFile "download_$($args[1])_2.tar.gz"
+          } -ArgumentList $urls[$i], $i
+        }
+        Wait-Job -Job $jobs; Remove-Job -Job $jobs
+        Set-Location ..
+        Remove-Item -Recurse -Force $dir
+        Write-Host "Network stress test completed"
