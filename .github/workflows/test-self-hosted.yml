@@ -155,19 +155,14 @@ jobs:
           } -ArgumentList $outFile
         }
         if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
-        Write-Host "Reading files back..."
+        Write-Host "Reading files back sequentially..."
         for ($round=1; $round -le 5; $round++) {
           Write-Host "Read round $round"
-          $jobs = @()
           $files = Get-ChildItem -Path $dirPath -Filter *.bin
           if ($files.Count -eq 0) { throw "No .bin files found!" }
           foreach ($file in $files) {
-            $jobs += Start-Job -ScriptBlock {
-              param($inFile)
-              [System.IO.File]::ReadAllBytes($inFile) | Out-Null
-            } -ArgumentList $file.FullName
+            [System.IO.File]::ReadAllBytes($file.FullName) | Out-Null
           }
-          if ($jobs.Count -gt 0) { Wait-Job -Job $jobs; Remove-Job -Job $jobs }
         }
         Write-Host "Performing random I/O operations..."
         $jobs = @()
