@@ -8,6 +8,8 @@ See what's actually happening in your GitHub Actions workflows. This action moni
 
 No more guessing if your job is using the runner efficiently. Just add one line and get instant visibility.
 
+![Demo](demo.gif)
+
 ## What You Get
 
 - 📈 **Real-time Metrics** - CPU, memory, disk I/O over time
@@ -65,19 +67,28 @@ xychart-beta
 
 **Average Resource Utilization:**
 
-CPU Usage (60.4% used):
+<table>
+<tr>
+<td>
+
 ```mermaid
-pie showData title Resource Utilization
-    "CPU Used" : 60.4
-    "CPU Idle" : 39.6
+pie showData title CPU (60.4% used)
+    "Used" : 60.4
+    "Idle" : 39.6
 ```
 
-Memory Usage (75.4% used):
+</td>
+<td>
+
 ```mermaid
-pie showData title Memory Utilization
+pie showData title Memory (75.4% used)
     "Used" : 75.4
     "Available" : 24.6
 ```
+
+</td>
+</tr>
+</table>
 
 **Analysis:**
 ```
@@ -99,6 +110,8 @@ All reports include:
 - **Process list** showing what's running
 - **Cost analysis** with upgrade recommendations
 - **Per-step breakdown** if you add step markers
+
+📂 **[Browse more example reports →](examples/reports/README.md)**
 
 ## Quick Start
 
