@@ -1,0 +1,183 @@
+# 🖥️ Runner Telemetry Dashboard
+
+> **🔴 Status: Needs Attention** • Duration: 10.0m • Samples: 20
+
+---
+
+## 📊 Quick Overview
+
+| | Current | Peak | Average |
+|:--|:-------:|:----:|:-------:|
+| **CPU** 🔴 | 🔴 `██████████████████░░` 93.0% | 93.0% | 69.4% |
+| **Memory** 🔴 | 🔴 `██████████████████░░` 92.0% | 92.0% | 74.6% |
+| **Load** 🟢 | 0.50 | 0.50 | 0.50 |
+
+---
+
+## 📈 Resource Usage Over Time
+
+| 🔵 CPU % | 🟢 Memory % |
+|:--------:|:-----------:|
+| Peak: 93.0% / Avg: 69.4% | Peak: 92.0% / Avg: 74.6% |
+
+```mermaid
+xychart-beta
+    title "CPU & Memory Usage Over Time"
+    x-axis "Time (seconds)" ["0", "30", "60", "90", "120", "150", "180", "210", "240", "270", "300", "330", "360", "390", "420", "450", "480", "510", "540", "570"]
+    y-axis "Usage %" 0 --> 100
+    line [70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 93.0, 93.0, 93.0, 93.0, 93.0, 93.0]
+    line [80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0]
+```
+
+
+
+---
+
+## 🔄 Average Resource Utilization
+
+This shows the average CPU and memory usage during your job:
+
+<table>
+<tr>
+<td width="50%">
+
+**CPU Usage** - Average across all cores
+
+```mermaid
+pie showData title Resource Utilization
+    "CPU Used" : 69.4
+    "CPU Idle" : 30.6
+```
+
+
+</td>
+<td width="50%">
+
+**Memory Usage** - Average RAM consumption
+
+```mermaid
+pie showData title Memory Utilization
+    "Used" : 74.6
+    "Available" : 25.4
+```
+
+
+</td>
+</tr>
+</table>
+
+---
+
+## ⚡ Performance Metrics
+
+| Metric | Status | Peak | Average |
+|:-------|:------:|:----:|:-------:|
+| **I/O Wait** | 🟢 | 6.0% | 3.6% |
+| **CPU Steal** | 🟢 | 0.0% | 0.0% |
+| **Swap Usage** | 🟢 | 0.0% | 0.0% |
+
+
+
+## 💾 I/O Summary
+
+| Metric | Total | Avg Rate |
+|:-------|------:|---------:|
+| 📥 **Disk Read** | 3.0 GB | 5.1 MB/s |
+| 📤 **Disk Write** | 1.7 GB | 2.9 MB/s |
+| 🌐 **Network RX** | 2.1 GB | 3.6 MB/s |
+| 🌐 **Network TX** | 1.3 GB | 2.3 MB/s |
+
+
+
+---
+
+## 📋 Per-Step Analysis
+
+| Step | Duration | Avg CPU | Max CPU | Avg Mem | Max Mem |
+|:-----|:--------:|:-------:|:-------:|:-------:|:-------:|
+| Install Dependencies | 2.8m | 60.0% | 70.0% | 66.7% | 80.0% |
+| Build Application | 2.8m | 57.5% | 70.0% | 66.7% | 80.0% |
+| 🔥 Run Tests | 4.4m | 85.4% | 93.0% | 86.5% | 92.0% |
+
+
+> 💡 **Insights:** Longest step: **Run Tests** (4.4m) • 
+> Heaviest CPU: **Run Tests** (85.4%)
+
+
+---
+
+## 💰 Runner Utilization & Cost Efficiency
+
+> **Key Question:** Are you getting maximum value from your GitHub hosted runner?
+
+### Utilization Score: D (93%)
+
+🔴 Poor - Job exceeds runner capacity - consider upgrading to a larger runner
+
+`██████████████████░░` **92.6%**
+
+### 📊 What You're Paying For vs What You're Using
+
+| Resource | Available | Peak Used | Avg Used |
+|:---------|----------:|----------:|---------:|
+| **CPU Cores** | 8 | 7.4 | 5.6 |
+| **RAM** | 32.0 GB | 29.4 GB | 23.9 GB |
+
+### 💵 Cost Analysis (Jan 2026+ Pricing)
+
+> 📖 Pricing reference: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+| Metric | Value |
+|:-------|------:|
+| **Runner Type** | `Windows 8-core Larger Runner` |
+| **This Run** | $0.42 (10 min) |
+| **Est. Monthly** (10 runs/day) | $126.00 |
+
+
+### 🎯 Optimization Strategy
+
+GitHub hosted runners are most useful when jobs finish quickly and resources match the workload:
+
+
+**Priority: Optimize Build ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **93.0%** (avg: 69.4%)
+- Memory peaked at **92.0%** (avg: 74.6%)
+
+Larger GitHub-hosted runners are available; consider upgrading to a higher vCPU/RAM tier if performance is constrained.
+Examples (subject to plan availability): Linux/Windows offer 16, 32, 64, or 96 vCPU tiers. See documentation for the full list and current pricing.
+
+**Options to address overutilization:**
+
+1. **Parallelize** - Use matrix strategy for independent jobs
+2. **Cache** - Improve dependency caching to reduce download time
+3. **Profile** - Identify and optimize slowest steps
+4. **Simplify** - Remove unnecessary dependencies and tools
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+
+---
+
+## 🖥️ Runner Information
+
+| Component | Details |
+|:----------|:--------|
+| **Runner** | windows-8-core |
+| **OS** | Windows |
+| **Architecture** | X64 |
+| **Total Memory** | 32,768 MB |
+| **CPU Cores** | 8 |
+
+
+---
+
+## 💡 Recommendations
+
+- ⚠️ **High CPU Usage:** Peak reached 93.0%. Consider using a larger runner or optimizing compute-heavy operations.
+- ⚠️ **High Memory Usage:** Peak reached 92.0%. Watch for OOM issues or consider runners with more RAM.
+
+---
+
+<sub>Generated by [Runner Telemetry Action](https://github.com/tsviz/actions-runner-telemetry)</sub>

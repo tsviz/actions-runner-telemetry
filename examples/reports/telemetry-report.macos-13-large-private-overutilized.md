@@ -1,0 +1,183 @@
+# 🖥️ Runner Telemetry Dashboard
+
+> **🔴 Status: Needs Attention** • Duration: 5.0m • Samples: 20
+
+---
+
+## 📊 Quick Overview
+
+| | Current | Peak | Average |
+|:--|:-------:|:----:|:-------:|
+| **CPU** 🔴 | 🔴 `██████████████████░░` 93.0% | 93.0% | 69.4% |
+| **Memory** 🔴 | 🔴 `██████████████████░░` 92.0% | 92.0% | 74.6% |
+| **Load** 🟢 | 0.50 | 0.50 | 0.50 |
+
+---
+
+## 📈 Resource Usage Over Time
+
+| 🔵 CPU % | 🟢 Memory % |
+|:--------:|:-----------:|
+| Peak: 93.0% / Avg: 69.4% | Peak: 92.0% / Avg: 74.6% |
+
+```mermaid
+xychart-beta
+    title "CPU & Memory Usage Over Time"
+    x-axis "Time (seconds)" ["0", "15", "30", "45", "60", "75", "90", "105", "120", "135", "150", "165", "180", "195", "210", "225", "240", "255", "270", "285"]
+    y-axis "Usage %" 0 --> 100
+    line [70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 55.0, 55.0, 70.0, 55.0, 93.0, 93.0, 93.0, 93.0, 93.0, 93.0]
+    line [80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 60.0, 80.0, 60.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0]
+```
+
+
+
+---
+
+## 🔄 Average Resource Utilization
+
+This shows the average CPU and memory usage during your job:
+
+<table>
+<tr>
+<td width="50%">
+
+**CPU Usage** - Average across all cores
+
+```mermaid
+pie showData title Resource Utilization
+    "CPU Used" : 69.4
+    "CPU Idle" : 30.6
+```
+
+
+</td>
+<td width="50%">
+
+**Memory Usage** - Average RAM consumption
+
+```mermaid
+pie showData title Memory Utilization
+    "Used" : 74.6
+    "Available" : 25.4
+```
+
+
+</td>
+</tr>
+</table>
+
+---
+
+## ⚡ Performance Metrics
+
+| Metric | Status | Peak | Average |
+|:-------|:------:|:----:|:-------:|
+| **I/O Wait** | 🟢 | 6.0% | 3.6% |
+| **CPU Steal** | 🟢 | 0.0% | 0.0% |
+| **Swap Usage** | 🟢 | 0.0% | 0.0% |
+
+
+
+## 💾 I/O Summary
+
+| Metric | Total | Avg Rate |
+|:-------|------:|---------:|
+| 📥 **Disk Read** | 1.5 GB | 5.1 MB/s |
+| 📤 **Disk Write** | 858.3 MB | 2.9 MB/s |
+| 🌐 **Network RX** | 1.0 GB | 3.6 MB/s |
+| 🌐 **Network TX** | 686.6 MB | 2.3 MB/s |
+
+
+
+---
+
+## 📋 Per-Step Analysis
+
+| Step | Duration | Avg CPU | Max CPU | Avg Mem | Max Mem |
+|:-----|:--------:|:-------:|:-------:|:-------:|:-------:|
+| Install Dependencies | 1.4m | 60.0% | 70.0% | 66.7% | 80.0% |
+| Build Application | 1.4m | 57.5% | 70.0% | 66.7% | 80.0% |
+| 🔥 Run Tests | 2.2m | 85.4% | 93.0% | 86.5% | 92.0% |
+
+
+> 💡 **Insights:** Longest step: **Run Tests** (2.2m) • 
+> Heaviest CPU: **Run Tests** (85.4%)
+
+
+---
+
+## 💰 Runner Utilization & Cost Efficiency
+
+> **Key Question:** Are you getting maximum value from your GitHub hosted runner?
+
+### Utilization Score: D (93%)
+
+🔴 Poor - Job exceeds runner capacity - consider upgrading to a larger runner
+
+`██████████████████░░` **92.6%**
+
+### 📊 What You're Paying For vs What You're Using
+
+| Resource | Available | Peak Used | Avg Used |
+|:---------|----------:|----------:|---------:|
+| **CPU Cores** | 12 | 11.2 | 8.3 |
+| **RAM** | 30.0 GB | 27.6 GB | 22.4 GB |
+
+### 💵 Cost Analysis (Jan 2026+ Pricing)
+
+> 📖 Pricing reference: [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+| Metric | Value |
+|:-------|------:|
+| **Runner Type** | `macOS 13 Large Runner (Intel)` |
+| **This Run** | $0.385 (5 min) |
+| **Est. Monthly** (10 runs/day) | $115.50 |
+
+
+### 🎯 Optimization Strategy
+
+GitHub hosted runners are most useful when jobs finish quickly and resources match the workload:
+
+
+**Priority: Optimize Build ⚠️**
+
+Your job is **straining resources** on the current runner:
+- CPU peaked at **93.0%** (avg: 69.4%)
+- Memory peaked at **92.0%** (avg: 74.6%)
+
+You're already on a larger macOS runner. Focus on optimization strategies:
+
+1. **Parallelize** - Use matrix strategy for independent jobs
+2. **Cache** - Improve dependency caching to reduce download time
+3. **Profile** - Identify and optimize slowest steps (especially Xcode builds)
+4. **Simplify** - Remove unnecessary dependencies and tools
+
+If you need more capacity, check available macOS runner tiers:
+See: [Available macOS larger runners and labels](https://docs.github.com/en/enterprise-cloud@latest/actions/reference/runners/larger-runners#available-macos-larger-runners-and-labels)
+
+**More options:** [GitHub Actions Runner Pricing](https://docs.github.com/en/enterprise-cloud@latest/billing/reference/actions-runner-pricing)
+
+
+---
+
+## 🖥️ Runner Information
+
+| Component | Details |
+|:----------|:--------|
+| **Runner** | macos-13-large |
+| **OS** | MacOS |
+| **Architecture** | X64 |
+| **Total Memory** | 30,720 MB |
+| **CPU Cores** | 12 |
+
+
+---
+
+## 💡 Recommendations
+
+- ⚠️ **High CPU Usage:** Peak reached 93.0%. Consider using a larger runner or optimizing compute-heavy operations.
+- ⚠️ **High Memory Usage:** Peak reached 92.0%. Watch for OOM issues or consider runners with more RAM.
+
+---
+
+<sub>Generated by [Runner Telemetry Action](https://github.com/tsviz/actions-runner-telemetry)</sub>
