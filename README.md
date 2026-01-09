@@ -136,6 +136,32 @@ jobs:
 
 Done. The report appears in your workflow summary when the job finishes.
 
+## Prerequisites
+
+This action requires **Python 3.x** to be available on the runner.
+
+✅ **Most GitHub-hosted runners** include Python by default—no extra setup needed.
+
+⚠️ **Some runners may not have Python**, including:
+- Windows ARM64 partner images
+- Certain self-hosted runners
+- Custom base images
+
+If Python is missing, add `actions/setup-python` before this action:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  
+  - uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
+  
+  - uses: tsviz/actions-runner-telemetry@v1
+  
+  # ... your build steps ...
+```
+
 ## Real-World Usage
 
 **"Why is my build slow?"**  
@@ -340,7 +366,7 @@ A: No. Sampling happens every 2 seconds in the background. Overhead is <1% CPU.
 A: Works on Linux, macOS, and Windows runners. Metrics vary slightly by OS.
 
 **Q: Can I use this on a self-hosted runner?**  
-A: Yes. Works anywhere Docker runs.
+A: Yes. Works on any runner with Python 3.x installed. See [Prerequisites](#prerequisites).
 
 **Q: Why would I upgrade to a bigger runner?**  
 A: If your job uses >85% CPU/memory consistently, you'll hit timeouts. A bigger runner costs more per minute but jobs finish faster—and might be cheaper overall when you count developer time.

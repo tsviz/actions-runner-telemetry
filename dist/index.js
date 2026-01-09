@@ -141,7 +141,17 @@ function detectRepoVisibility(explicit) {
 function startCollector(interval) {
   const pyCmd = findPython();
   if (!pyCmd) {
-    log('❌ Python is not available on this runner. Install python3 or python.');
+    log('❌ Python is not available on this runner.');
+    log('');
+    log('   To fix this, add the following step BEFORE this action:');
+    log('');
+    log('   - uses: actions/setup-python@v5');
+    log('     with:');
+    log('       python-version: "3.11"');
+    log('');
+    log('   See: https://github.com/tsviz/actions-runner-telemetry#prerequisites');
+    appendOutput('enabled', 'false');
+    appendOutput('error', 'python-not-found');
     return;
   }
   const py = actionPath('telemetry_collector.py');
@@ -206,7 +216,7 @@ function stopCollectorIfRunning() {
 function runPy(script, args = []) {
   const py = findPython();
   if (!py) {
-    log('❌ Python is not available on this runner. Install python3 or python.');
+    log('❌ Python is not available. Add actions/setup-python@v5 before this action.');
     return Promise.resolve(1);
   }
   return new Promise((resolve) => {
@@ -314,12 +324,42 @@ main().catch((e) => {
 });
 
 function findPython() {
-  const candidates = ['python3', 'python'];
+  const isWindows = process.platform === 'win32';
+  
+  // Platform-specific command candidates
+  const candidates = isWindows
+    ? ['python', 'python3', 'py -3', 'py']
+    : ['python3', 'python'];
+  
   for (const cmd of candidates) {
-    const res = spawnSync(cmd, ['-V']);
-    if (res && res.status === 0) return cmd;
+    try {
+      const parts = cmd.split(' ');
+      const res = spawnSync(parts[0], [...parts.slice(1), '-V'], {
+        shell: isWindows,
+        timeout: 5000,
+        windowsHide: true
+      });
+      if (res && res.status === 0) return cmd;
+    } catch (_) {}
   }
-  if (fs.existsSync('/usr/bin/python3')) return '/usr/bin/python3';
+  
+  // Check common installation paths
+  const commonPaths = isWindows
+    ? [
+        'C:\\Python312\\python.exe',
+        'C:\\Python311\\python.exe',
+        'C:\\Python310\\python.exe',
+        'C:\\Python39\\python.exe',
+        'C:\\hostedtoolcache\\windows\\Python\\3.12.0\\x64\\python.exe',
+        'C:\\hostedtoolcache\\windows\\Python\\3.11.0\\x64\\python.exe',
+        'C:\\hostedtoolcache\\windows\\Python\\3.10.0\\x64\\python.exe',
+      ]
+    : ['/usr/bin/python3', '/usr/local/bin/python3', '/opt/homebrew/bin/python3'];
+  
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  
   return null;
 }
 
