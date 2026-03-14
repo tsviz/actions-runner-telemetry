@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/tsviz/actions-runner-telemetry#readme",
   "dependencies": {
-    "@actions/artifact": "^5.0.1",
+    "@actions/artifact": "^6.2.1",
     "@actions/core": "^2.0.1"
   },
   "devDependencies": {
