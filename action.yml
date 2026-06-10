@@ -44,7 +44,7 @@ outputs:
   enabled:
     description: "Whether telemetry was enabled for this run"
 runs:
-  using: "node20"
+  using: "node22"
   main: "dist/index.js"
   post: "dist/post.js"
   post-if: "always()"
