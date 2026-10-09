@@ -23,6 +23,7 @@ class TestNormalizeRunnerLabel(unittest.TestCase):
     def test_standard_labels_unchanged(self):
         """Standard labels should normalize to themselves or proper canonical form."""
         self.assertEqual(normalize_runner_label('ubuntu-latest'), 'ubuntu-latest')
+        self.assertEqual(normalize_runner_label('ubuntu-slim'), 'ubuntu-slim')
         self.assertEqual(normalize_runner_label('ubuntu-24.04'), 'ubuntu-24.04')
         self.assertEqual(normalize_runner_label('ubuntu-22.04'), 'ubuntu-22.04')
         self.assertEqual(normalize_runner_label('windows-latest'), 'windows-latest')
@@ -112,6 +113,21 @@ class TestDetectRunnerType(unittest.TestCase):
         }
         result = detect_runner_type(data)
         self.assertEqual(result, 'ubuntu-latest')
+
+    def test_ubuntu_slim_runner_by_specs(self):
+        """A hosted 1-core/5GB Linux runner should be detected as ubuntu-slim."""
+        data = {
+            'github_context': {
+                'runner_os': 'Linux',
+                'runner_name': 'GitHub Actions 123456'
+            },
+            'initial_snapshot': {
+                'cpu_count': 1,
+                'memory': {'total_mb': 4915}
+            }
+        }
+        result = detect_runner_type(data, is_public_repo=False)
+        self.assertEqual(result, 'ubuntu-slim')
     
     def test_linux_large_runner_by_specs(self):
         """Test detection of large Linux runner by specs when name is non-standard."""
@@ -231,6 +247,7 @@ class TestIsRunnerFree(unittest.TestCase):
     def test_standard_runner_public_repo(self):
         """Test standard runner on public repo is free."""
         self.assertTrue(is_runner_free('ubuntu-latest', is_public_repo=True))
+        self.assertTrue(is_runner_free('ubuntu-slim', is_public_repo=True))
         self.assertTrue(is_runner_free('windows-latest', is_public_repo=True))
         self.assertTrue(is_runner_free('macos-latest', is_public_repo=True))
     
@@ -238,6 +255,7 @@ class TestIsRunnerFree(unittest.TestCase):
     def test_standard_runner_private_repo(self):
         """Test standard runner on private repo is paid."""
         self.assertFalse(is_runner_free('ubuntu-latest', is_public_repo=False))
+        self.assertFalse(is_runner_free('ubuntu-slim', is_public_repo=False))
         self.assertFalse(is_runner_free('windows-latest', is_public_repo=False))
         self.assertFalse(is_runner_free('macos-latest', is_public_repo=False))
     
