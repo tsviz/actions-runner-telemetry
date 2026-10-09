@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import unittest
+from pathlib import Path
 
 # Import the report generator module
 import generate_report as gr
@@ -56,6 +57,11 @@ def build_data(runner_name, runner_os, cpu_cores, mem_mb, duration_sec, interval
 
 
 class TestReportGeneration(unittest.TestCase):
+    def test_action_uses_node24(self):
+        action_metadata = Path(__file__).with_name('action.yml').read_text(encoding='utf-8')
+        self.assertIn('using: "node24"', action_metadata)
+        self.assertNotIn('using: "node20"', action_metadata)
+
     def test_public_standard_free_runner(self):
         data = build_data('ubuntu-latest', 'Linux', 4, 16384, 20, 1, 'public')
         report = gr.generate_report(data)
@@ -134,6 +140,44 @@ class TestReportGeneration(unittest.TestCase):
         self.assertEqual(rec['recommended'], 'linux-4-core')
         self.assertEqual(rec['cores'], 4)
         self.assertTrue(rec['is_upgrade_possible'])
+
+    def test_private_ubuntu_slim_upgrade_recommends_standard_runner(self):
+        rec = gr.recommend_runner_upgrade(
+            max_cpu_pct=95,
+            max_mem_pct=80,
+            duration_seconds=120,
+            current_runner_type='ubuntu-slim',
+            is_public_repo=False
+        )
+
+        self.assertEqual(rec['recommended'], 'ubuntu-latest')
+        self.assertEqual(rec['cores'], 2)
+        self.assertEqual(rec['ram_gb'], 7)
+        self.assertEqual(rec['current_cost_per_min'], 0.002)
+
+    def test_public_ubuntu_slim_upgrade_uses_public_standard_specs(self):
+        rec = gr.recommend_runner_upgrade(
+            max_cpu_pct=95,
+            max_mem_pct=80,
+            duration_seconds=120,
+            current_runner_type='ubuntu-slim',
+            is_public_repo=True
+        )
+
+        self.assertEqual(rec['recommended'], 'ubuntu-latest')
+        self.assertEqual(rec['cores'], 4)
+        self.assertEqual(rec['ram_gb'], 16)
+
+    def test_public_ubuntu_slim_report_recommends_ubuntu_latest(self):
+        data = build_data('GitHub Actions 123456', 'Linux', 1, 4915, 120, 1, 'public')
+        for sample in data['samples']:
+            sample['cpu_percent'] = 95.0
+            sample['memory']['percent'] = 80.0
+
+        report = gr.generate_report(data)
+
+        self.assertIn('This job ran on `Ubuntu Slim Runner`', report)
+        self.assertIn('Recommended Runner: Ubuntu Standard Runner (4-core, 16GB RAM)', report)
     
     def test_8core_upgrade_recommends_16core(self):
         """Test that maxed-out 8-core runner recommends 16-core, not 8-core again.

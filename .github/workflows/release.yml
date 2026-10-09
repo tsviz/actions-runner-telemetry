@@ -130,6 +130,8 @@ jobs:
 
           - ✅ Security updates for lodash, fast-xml-parser, minimatch, brace-expansion, and undici
           - ✅ Updated artifact uploads to the maintained `@actions/artifact` v6 client
+          - ✅ Node.js 24 runtime support for the V1 action
+          - ✅ Accurate `ubuntu-slim` detection, pricing, and upgrade recommendations
           - ✅ Cost optimization analysis with overutilization detection
           - ✅ Improved scoring logic (Grade D for jobs exceeding runner capacity)
           - ✅ GitHub pricing documentation integration

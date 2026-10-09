@@ -88,7 +88,7 @@ UTILIZATION_THRESHOLDS = {
 
 # Canonical free standard runner labels (free on public repos only)
 FREE_RUNNER_LABELS = {
-    'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
+    'ubuntu-slim', 'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
     'windows-latest', 'windows-2025', 'windows-2022',
     'macos-latest',
 }
@@ -105,6 +105,15 @@ FREE_RUNNER_LABELS = {
 
 GITHUB_RUNNERS = {
     # Standard hosted runners - specs differ by repo visibility
+    'ubuntu-slim': {
+        'sku': 'linux', 'name': 'Ubuntu Slim Runner',
+        'vcpus': 1, 'ram_gb': 5,
+        'public_vcpus': 1, 'public_ram_gb': 5,
+        'is_larger': False,
+        'is_free_public': True,
+        'private_cost_per_min': 0.002,
+        'cost_per_min': 0.002,
+    },
     # Public: 4 CPU, 16GB | Private: 2 CPU, 7GB
     'ubuntu-latest': {
         'sku': 'linux', 'name': 'Ubuntu Standard Runner',
@@ -188,19 +197,19 @@ GITHUB_RUNNERS = {
         'sku': 'linux', 'name': 'Linux 16-core Larger Runner',
         'vcpus': 16, 'ram_gb': 64,
         'is_larger': True,
-        'cost_per_min': 0.044,
+        'cost_per_min': 0.042,
     },
     'linux-32-core': {
         'sku': 'linux', 'name': 'Linux 32-core Larger Runner',
         'vcpus': 32, 'ram_gb': 128,
         'is_larger': True,
-        'cost_per_min': 0.088,
+        'cost_per_min': 0.082,
     },
     'linux-64-core': {
         'sku': 'linux', 'name': 'Linux 64-core Larger Runner',
         'vcpus': 64, 'ram_gb': 208,
         'is_larger': True,
-        'cost_per_min': 0.176,
+        'cost_per_min': 0.162,
     },
     # Larger Linux ARM (cheaper than x64)
     'linux-4-core-arm': {
@@ -233,19 +242,19 @@ GITHUB_RUNNERS = {
         'sku': 'windows', 'name': 'Windows 16-core Larger Runner',
         'vcpus': 16, 'ram_gb': 64,
         'is_larger': True,
-        'cost_per_min': 0.084,
+        'cost_per_min': 0.082,
     },
     'windows-32-core': {
         'sku': 'windows', 'name': 'Windows 32-core Larger Runner',
         'vcpus': 32, 'ram_gb': 128,
         'is_larger': True,
-        'cost_per_min': 0.168,
+        'cost_per_min': 0.162,
     },
     'windows-64-core': {
         'sku': 'windows', 'name': 'Windows 64-core Larger Runner',
         'vcpus': 64, 'ram_gb': 208,
         'is_larger': True,
-        'cost_per_min': 0.336,
+        'cost_per_min': 0.322,
     },
     # Larger Windows ARM (cheaper than x64)
     'windows-4-core-arm': {
@@ -343,7 +352,7 @@ def normalize_runner_label(name: str, runner_os_hint: str = None):
 
     canonical_labels = {
         # Standard hosted labels
-        'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
+        'ubuntu-slim', 'ubuntu-latest', 'ubuntu-24.04', 'ubuntu-22.04',
         'windows-latest', 'windows-2025', 'windows-2022',
         'macos-latest',
         # Larger Linux
@@ -1307,8 +1316,8 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     recommended_specs = GITHUB_RUNNERS.get(recommended, {})
     
     # Get actual core counts
-    current_cores = current_specs.get('vcpus', 2)
-    recommended_cores = recommended_specs.get('vcpus', 2)
+    current_cores = current_specs.get('public_vcpus', current_specs.get('vcpus', 2)) if is_public_repo else current_specs.get('vcpus', 2)
+    recommended_cores = recommended_specs.get('public_vcpus', recommended_specs.get('vcpus', 2)) if is_public_repo else recommended_specs.get('vcpus', 2)
     current_cost_per_min = current_specs.get('cost_per_min', 0.006)
     recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
     
@@ -1333,7 +1342,7 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
                     recommended = 'macos-13-xlarge'
         # Refresh specs after escalation
         recommended_specs = GITHUB_RUNNERS.get(recommended, {})
-        recommended_cores = recommended_specs.get('vcpus', recommended_cores)
+        recommended_cores = recommended_specs.get('public_vcpus', recommended_specs.get('vcpus', recommended_cores)) if is_public_repo else recommended_specs.get('vcpus', recommended_cores)
         recommended_cost_per_min = recommended_specs.get('cost_per_min', recommended_cost_per_min)
     
     # Additional fallback: if current is 2-core and recommended is also 2-core, force 4-core upgrade
@@ -1346,16 +1355,16 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
             recommended = 'windows-4-core'
         # Re-fetch specs
         recommended_specs = GITHUB_RUNNERS.get(recommended, {})
-        recommended_cores = recommended_specs.get('vcpus', 2)
+        recommended_cores = recommended_specs.get('public_vcpus', recommended_specs.get('vcpus', 2)) if is_public_repo else recommended_specs.get('vcpus', 2)
         recommended_cost_per_min = recommended_specs.get('cost_per_min', 0.006)
         is_upgrade_possible = recommended != current_runner_type
     
     # Capacity guard: ensure recommended RAM can cover observed peak + headroom
     # Use current runner RAM as baseline to estimate peak GB from max_mem_pct
-    current_ram_gb = current_specs.get('ram_gb', 0)
+    current_ram_gb = current_specs.get('public_ram_gb', current_specs.get('ram_gb', 0)) if is_public_repo else current_specs.get('ram_gb', 0)
     observed_peak_gb = (current_ram_gb * (max_mem_pct / 100.0)) if current_ram_gb else 0
     required_ram_gb = observed_peak_gb * 1.25  # 25% headroom
-    recommended_ram_gb = recommended_specs.get('ram_gb', 0)
+    recommended_ram_gb = recommended_specs.get('public_ram_gb', recommended_specs.get('ram_gb', 0)) if is_public_repo else recommended_specs.get('ram_gb', 0)
     if is_upgrade_possible and recommended_ram_gb > 0 and required_ram_gb > 0:
         if recommended_ram_gb < required_ram_gb:
             # No suitable larger tier within same OS family for memory needs
@@ -1408,7 +1417,7 @@ def recommend_runner_upgrade(max_cpu_pct, max_mem_pct, duration_seconds, current
     return {
         'recommended': recommended,
         'cores': recommended_cores,
-        'ram_gb': recommended_specs.get('ram_gb', 7),
+        'ram_gb': recommended_specs.get('public_ram_gb', recommended_specs.get('ram_gb', 7)) if is_public_repo else recommended_specs.get('ram_gb', 7),
         'reason': reason,
         'speedup_estimate': speedup_estimate,
         'speedup_factor': speedup_factor,
