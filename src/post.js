@@ -78,7 +78,7 @@ async function uploadArtifacts(workspace, artifactName) {
   try {
     // @actions/artifact v2+ API
     // Signature: uploadArtifact(name, files, rootDirectory, options?)
-    const { DefaultArtifactClient } = require('@actions/artifact');
+    const { DefaultArtifactClient } = await import('@actions/artifact');
     const client = new DefaultArtifactClient();
     
     const uploadResponse = await client.uploadArtifact(
